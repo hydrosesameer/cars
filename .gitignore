@@ -1,0 +1,8 @@
+node_modules/
+.env
+.DS_Store
+query_out.txt
+test_out.txt
+items_out.txt
+database/db.sqlite
+*.db

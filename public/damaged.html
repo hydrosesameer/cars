@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CAFS - Damaged Goods</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/index.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo-box"><i class="fas fa-plane-arrival"></i></div>
+          <div class="logo-text">CAFS <span>Inventory</span></div>
+        </div>
+        <nav class="sidebar-nav">
+          <a href="index.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a>
+          <div class="nav-label">Transactions</div>
+          <a href="inward.html" class="nav-item"><i class="fas fa-arrow-down"></i> <span>Inward Billing</span></a>
+          <a href="outward.html" class="nav-item"><i class="fas fa-arrow-up"></i> <span>Outward Billing</span></a>
+          <a href="stock.html" class="nav-item"><i class="fas fa-boxes"></i> <span>Balance Stock</span></a>
+          <a href="damaged.html" class="nav-item active"><i class="fas fa-heart-broken"></i> <span>Damaged Goods</span></a>
+          <a href="return-stock.html" class="nav-item"><i class="fas fa-undo"></i> <span>Return to Origin</span></a>
+          <div class="nav-label">Reports (A3)</div>
+          <a href="form-a.html" class="nav-item"><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a>
+          <a href="form-b.html" class="nav-item"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
+          <div class="nav-label">Inventory Reports</div>
+          <a href="consignment-stock.html" class="nav-item"><i class="fas fa-chart-pie"></i> <span>Consignment Stock</span></a>
+          <a href="detailed-stock.html" class="nav-item"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
+          <a href="shipping-bill.html" class="nav-item"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
+          <div class="nav-label">Master Data</div>
+          <a href="items.html" class="nav-item"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
+          <a href="consignments.html" class="nav-item"><i class="fas fa-building"></i> <span>Consignments</span></a>
+          <a href="airline-masters.html" class="nav-item"><i class="fas fa-plane"></i> <span>Airline Masters</span></a>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <header class="top-bar">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search damage records..." id="global-search" />
+          </div>
+          <div class="top-actions">
+            <button class="btn btn-primary" onclick="openDamageModal()">
+              <i class="fas fa-plus"></i> Report Damage
+            </button>
+            <div class="divider"></div>
+            <button class="icon-btn" title="Refresh" onclick="window.location.reload()">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+          </div>
+        </header>
+
+        <div id="page-content" class="content-body">
+          <section id="page-damaged" class="page active">
+            <div class="page-header">
+              <h1 class="page-title">Damaged Goods Register</h1>
+            </div>
+            
+            <div class="dash-stats" id="damaged-stats">
+              <div class="dash-stat grad-red">
+                <div class="stat-icon-bg"><i class="fas fa-file-alt"></i></div>
+                <div class="stat-value" id="stat-total-reports">-</div>
+                <div class="stat-label">Total Reports</div>
+              </div>
+              <div class="dash-stat grad-orange">
+                <div class="stat-icon-bg"><i class="fas fa-cubes"></i></div>
+                <div class="stat-value" id="stat-total-qty">-</div>
+                <div class="stat-label">Total Qty Damaged</div>
+              </div>
+              <div class="dash-stat grad-blue">
+                <div class="stat-icon-bg"><i class="fas fa-calendar-alt"></i></div>
+                <div class="stat-value" id="stat-latest-date">-</div>
+                <div class="stat-label">Latest Incident</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-body" style="padding: 0">
+                <table class="table" id="damaged-table">
+                  <thead>
+                    <tr>
+                      <th>Reported Date</th>
+                      <th>Bond No</th>
+                      <th>BE No</th>
+                      <th>Airline / Consignment</th>
+                      <th>Item Description</th>
+                      <th>Qty Damaged</th>
+                      <th>Reason</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <!-- Modal for Damage Entry -->
+    <div class="modal-overlay" id="damage-modal">
+      <div class="modal" style="width: 600px; max-height: 90vh;">
+        <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Report Damaged Item</h2>
+          <button class="close-btn" onclick="closeDamageModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <form id="damage-form" onsubmit="event.preventDefault(); saveDamage();">
+            <div class="form-group">
+              <label>Select Bond No *</label>
+              <select id="dmg-bond-select" class="form-control" required style="width: 100%;">
+                <option value="">Loading bonds...</option>
+              </select>
+            </div>
+            
+            <div id="dmg-items-container" style="display: none; margin-bottom: 1rem;">
+              <label>Items for Selected Bond</label>
+              <table class="table" style="margin-top: 0.5rem;">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th>Avail Qty</th>
+                    <th style="width: 120px;">Qty Damaged</th>
+                  </tr>
+                </thead>
+                <tbody id="dmg-items-tbody"></tbody>
+              </table>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Reported Date</label>
+                <input type="date" id="dmg-date" class="form-control" required>
+              </div>
+              <div class="form-group">
+                <label>Reason</label>
+                <select id="dmg-reason" class="form-control">
+                  <option value="Damaged in transit">Damaged in transit</option>
+                  <option value="Breakage">Breakage</option>
+                  <option value="Expired">Expired</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Remarks</label>
+              <textarea id="dmg-remarks" class="form-control" rows="2"></textarea>
+            </div>
+            <div class="form-actions" style="margin-top: 20px;">
+              <button type="button" class="btn btn-outline" onclick="closeDamageModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Report</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+    <script src="js/app.js?v=2"></script>
+    <script>
+      let currentStockData = [];
+
+      document.addEventListener('DOMContentLoaded', async () => {
+        if (!authCheck()) return;
+        document.getElementById('dmg-date').valueAsDate = new Date();
+        await loadDamagedItems();
+        
+        document.getElementById('dmg-bond-select').addEventListener('change', (e) => {
+          const selectedBond = e.target.value;
+          const container = document.getElementById('dmg-items-container');
+          const tbody = document.getElementById('dmg-items-tbody');
+          
+          if (!selectedBond) {
+            container.style.display = 'none';
+            tbody.innerHTML = '';
+            return;
+          }
+          
+          const itemsForBond = currentStockData.filter(item => item.bond_no === selectedBond);
+          
+          if (itemsForBond.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center">No available stock for this bond</td></tr>';
+          } else {
+            tbody.innerHTML = itemsForBond.map(item => `
+              <tr>
+                <td>${item.description}</td>
+                <td>${item.available_qty}</td>
+                <td>
+                  <input type="number" class="form-control dmg-item-qty" 
+                         data-id="${item.id}" 
+                         max="${item.available_qty}" min="0" 
+                         placeholder="0" value="">
+                </td>
+              </tr>
+            `).join('');
+          }
+          container.style.display = 'block';
+        });
+      });
+
+      async function loadDamagedItems() {
+        const tbody = document.querySelector('#damaged-table tbody');
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center">Loading reports...</td></tr>';
+        
+        try {
+          const data = await apiCall('/damaged');
+          if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center">No damaged goods reported</td></tr>';
+            document.getElementById('stat-total-reports').textContent = '0';
+            document.getElementById('stat-total-qty').textContent = '0';
+            document.getElementById('stat-latest-date').textContent = '-';
+            return;
+          }
+          
+          let totalQty = 0;
+          let html = '';
+          data.forEach(item => {
+            totalQty += Number(item.qty_damaged) || 0;
+            html += `
+              <tr>
+                <td>${formatDate(item.reported_date)}</td>
+                <td>${item.bond_no || '-'}</td>
+                <td>${item.be_no || '-'}</td>
+                <td>${item.consignment_name || '-'}</td>
+                <td>${item.item_description}</td>
+                <td>${item.qty_damaged}</td>
+                <td><span class="status-badge" style="background:#ffebee; color:#c62828;">${item.reason}</span></td>
+                <td>
+                  <button class="icon-btn delete" title="Delete Report" onclick="deleteDamage(${item.id})">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            `;
+          });
+          tbody.innerHTML = html;
+          
+          document.getElementById('stat-total-reports').textContent = data.length;
+          document.getElementById('stat-total-qty').textContent = totalQty;
+          document.getElementById('stat-latest-date').textContent = data[0] ? formatDate(data[0].reported_date) : '-';
+          
+        } catch (error) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:red">Error loading reports</td></tr>';
+        }
+      }
+
+      function openDamageModal() {
+        document.getElementById('damage-form').reset();
+        document.getElementById('dmg-date').valueAsDate = new Date();
+        document.getElementById('damage-modal').classList.add('active');
+        fetchAvailableStockForDamage();
+      }
+
+      function closeDamageModal() {
+        document.getElementById('damage-modal').classList.remove('active');
+      }
+
+      async function fetchAvailableStockForDamage() {
+        const select = document.getElementById('dmg-bond-select');
+        select.innerHTML = '<option value="">Fetching available stock...</option>';
+        document.getElementById('dmg-items-container').style.display = 'none';
+        
+        try {
+          // Re-use detailed stock for filtering available items
+          const data = await apiCall('/reports/stock-report');
+          // Only keep items with available_qty > 0
+          currentStockData = (data.entries || []).filter(item => item.available_qty > 0);
+          
+          if (currentStockData.length === 0) {
+            select.innerHTML = '<option value="">No stock available</option>';
+            return;
+          }
+          
+          // Get unique bond numbers
+          const uniqueBonds = [...new Set(currentStockData.map(item => item.bond_no))];
+          
+          let options = '<option value="">-- Select Bond Number --</option>';
+          uniqueBonds.forEach(bond => {
+            options += `<option value="${bond}">${bond}</option>`;
+          });
+          select.innerHTML = options;
+        } catch (error) {
+          select.innerHTML = '<option value="">Failed to load stock</option>';
+        }
+      }
+
+      async function saveDamage() {
+        const bondNo = document.getElementById('dmg-bond-select').value;
+        if (!bondNo) {
+          showToast('Please select a Bond Number', 'error');
+          return;
+        }
+
+        const qtyInputs = document.querySelectorAll('.dmg-item-qty');
+        const itemsToReport = [];
+
+        qtyInputs.forEach(input => {
+          const qty = parseInt(input.value);
+          if (qty > 0) {
+            itemsToReport.push({
+              inward_item_id: input.dataset.id,
+              qty_damaged: qty
+            });
+          }
+        });
+
+        if (itemsToReport.length === 0) {
+          showToast('Please enter damaged quantity for at least one item', 'error');
+          return;
+        }
+        
+        const data = {
+          items: itemsToReport,
+          reported_date: document.getElementById('dmg-date').value,
+          reason: document.getElementById('dmg-reason').value,
+          remarks: document.getElementById('dmg-remarks').value
+        };
+        
+        try {
+          await apiCall('/damaged', 'POST', data);
+          showToast('Damaged item reported successfully');
+          closeDamageModal();
+          loadDamagedItems();
+        } catch (error) {
+          showToast(error.message || 'Error saving report', 'error');
+        }
+      }
+
+      async function deleteDamage(id) {
+        if (!confirm('Are you sure you want to delete this report? The stock will be restored.')) return;
+        try {
+          await apiCall('/damaged/' + id, 'DELETE');
+          showToast('Damage report deleted');
+          loadDamagedItems();
+        } catch (error) {
+          showToast('Error deleting report', 'error');
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,317 @@
+const express = require('express');
+const router = express.Router();
+
+// Get all shipping bills
+router.get('/', async (req, res) => {
+    const db = req.app.locals.db;
+    try {
+        const [bills] = await db.query(`
+            SELECT sb.*, c.name as consignment_name, c.code as consignment_code,
+                   (SELECT COUNT(*) FROM shipping_bill_items sbi WHERE sbi.shipping_bill_id = sb.id) as item_count,
+                   (SELECT SUM(sbi.qty) FROM shipping_bill_items sbi WHERE sbi.shipping_bill_id = sb.id) as total_qty,
+                   (SELECT SUM(sbi.value_amount) FROM shipping_bill_items sbi WHERE sbi.shipping_bill_id = sb.id) as total_value,
+                   (SELECT SUM(sbi.duty_amount) FROM shipping_bill_items sbi WHERE sbi.shipping_bill_id = sb.id) as total_duty
+            FROM shipping_bills sb
+            LEFT JOIN consignments c ON sb.consignment_id = c.id
+            ORDER BY sb.created_at DESC, sb.id DESC
+        `);
+        res.json(bills);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get single shipping bill with items
+router.get('/:id', async (req, res) => {
+    const db = req.app.locals.db;
+    try {
+        const [bills] = await db.query(`
+            SELECT sb.*, c.name as consignment_name, c.code as consignment_code
+            FROM shipping_bills sb
+            LEFT JOIN consignments c ON sb.consignment_id = c.id
+            WHERE sb.id = ?
+        `, [req.params.id]);
+
+        if (bills.length === 0) return res.status(404).json({ error: 'Shipping bill not found' });
+        const bill = bills[0];
+
+        const [items] = await db.query(`
+            SELECT sbi.*, ie.be_no, ie.be_date
+            FROM shipping_bill_items sbi
+            LEFT JOIN inward_entries ie ON sbi.inward_id = ie.id
+            WHERE sbi.shipping_bill_id = ?
+            ORDER BY sbi.id
+        `, [req.params.id]);
+
+        res.json({ ...bill, items });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Create new shipping bill (DRAFT)
+router.post('/', async (req, res) => {
+    const db = req.app.locals.db;
+    const {
+        shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
+        etd, vt, port_of_discharge, country_of_destination, station,
+        exporter_name, exporter_address, entered_no, entered_date,
+        remarks, items
+    } = req.body;
+
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        if (!shipping_bill_no || !shipping_bill_date) {
+            throw new Error('Shipping Bill No and Date are required');
+        }
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new Error('At least one item is required');
+        }
+
+        // Validate stock availability for each item
+        for (const item of items) {
+            const [stockRows] = await connection.query(`
+                SELECT (ii.qty - COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) - COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0) + COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse WHERE rse.inward_item_id = ii.id), 0)) as available
+                FROM inward_items ii
+                WHERE ii.id = ?
+            `, [item.inward_item_id]);
+
+            if (stockRows.length === 0) {
+                throw new Error(`Item not found: ${item.description}`);
+            }
+            const stock = stockRows[0];
+            if (stock.available < item.qty) {
+                throw new Error(`Insufficient stock for ${item.description}. Available: ${stock.available}, Requested: ${item.qty}`);
+            }
+        }
+
+        const [result] = await connection.query(`
+            INSERT INTO shipping_bills (
+                shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
+                etd, vt, port_of_discharge, country_of_destination, station,
+                exporter_name, exporter_address, entered_no, entered_date,
+                remarks, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')
+        `, [
+            shipping_bill_no, shipping_bill_date, consignment_id || null, flight_no || null,
+            etd || null, vt || null,
+            port_of_discharge || 'COK/KWI/COK', country_of_destination || 'KWI',
+            station || 'COCHIN',
+            exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
+            exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
+            entered_no || null, entered_date || null,
+            remarks || null
+        ]);
+
+        const billId = result.insertId;
+
+        for (const item of items) {
+            await connection.query(`
+                INSERT INTO shipping_bill_items (
+                    shipping_bill_id, inward_item_id, inward_id, item_id,
+                    description, bond_no, bond_expiry, qty,
+                    unit_value, value_amount, unit_duty, duty_amount
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                billId, item.inward_item_id, item.inward_id, item.item_id || null,
+                item.description, item.bond_no || null, item.bond_expiry || null, item.qty,
+                item.unit_value || 0, item.value_amount || 0,
+                item.unit_duty || 0, item.duty_amount || 0
+            ]);
+        }
+
+        await connection.commit();
+        res.json({ id: billId, message: 'Shipping bill created as DRAFT' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(error.message.includes('required') || error.message.includes('Insufficient') ? 400 : 500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+// Update shipping bill (DRAFT only)
+router.put('/:id', async (req, res) => {
+    const db = req.app.locals.db;
+    const {
+        shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
+        etd, vt, port_of_discharge, country_of_destination, station,
+        exporter_name, exporter_address, entered_no, entered_date,
+        remarks, items
+    } = req.body;
+
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        const [bills] = await connection.query('SELECT status FROM shipping_bills WHERE id = ?', [req.params.id]);
+        if (bills.length === 0) throw new Error('Shipping bill not found');
+        if (bills[0].status !== 'DRAFT') throw new Error('Only DRAFT shipping bills can be edited');
+
+        await connection.query(`
+            UPDATE shipping_bills SET
+                shipping_bill_no = ?, shipping_bill_date = ?, consignment_id = ?, flight_no = ?,
+                etd = ?, vt = ?, port_of_discharge = ?, country_of_destination = ?, station = ?,
+                exporter_name = ?, exporter_address = ?, entered_no = ?, entered_date = ?,
+                remarks = ?
+            WHERE id = ?
+        `, [
+            shipping_bill_no, shipping_bill_date, consignment_id || null, flight_no || null,
+            etd || null, vt || null,
+            port_of_discharge || 'COK/KWI/COK', country_of_destination || 'KWI',
+            station || 'COCHIN',
+            exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
+            exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
+            entered_no || null, entered_date || null,
+            remarks || null, req.params.id
+        ]);
+
+        if (items && Array.isArray(items) && items.length > 0) {
+            await connection.query('DELETE FROM shipping_bill_items WHERE shipping_bill_id = ?', [req.params.id]);
+            
+            for (const item of items) {
+                await connection.query(`
+                    INSERT INTO shipping_bill_items (
+                        shipping_bill_id, inward_item_id, inward_id, item_id,
+                        description, bond_no, bond_expiry, qty,
+                        unit_value, value_amount, unit_duty, duty_amount
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    req.params.id, item.inward_item_id, item.inward_id, item.item_id || null,
+                    item.description, item.bond_no || null, item.bond_expiry || null, item.qty,
+                    item.unit_value || 0, item.value_amount || 0,
+                    item.unit_duty || 0, item.duty_amount || 0
+                ]);
+            }
+        }
+
+        await connection.commit();
+        res.json({ message: 'Shipping bill updated' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(error.message.includes('found') || error.message.includes('DRAFT') ? 400 : 500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+// Approve shipping bill (auto-creates outward entry and dispatches stock)
+router.put('/:id/approve', async (req, res) => {
+    const db = req.app.locals.db;
+    const { approved_by } = req.body;
+
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        const [bills] = await connection.query(`
+            SELECT sb.*, c.name as consignment_name
+            FROM shipping_bills sb
+            LEFT JOIN consignments c ON sb.consignment_id = c.id
+            WHERE sb.id = ?
+        `, [req.params.id]);
+
+        if (bills.length === 0) throw new Error('Shipping bill not found');
+        const bill = bills[0];
+
+        if (bill.status !== 'DRAFT') throw new Error('Only DRAFT bills can be approved');
+
+        const [sbItems] = await connection.query('SELECT * FROM shipping_bill_items WHERE shipping_bill_id = ?', [req.params.id]);
+        if (sbItems.length === 0) throw new Error('No items in this shipping bill');
+
+        // Validate stock before approving & dispatching
+        for (const item of sbItems) {
+            const [stockRows] = await connection.query(`
+                SELECT (ii.qty - COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) - COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0) + COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse WHERE rse.inward_item_id = ii.id), 0)) as available
+                FROM inward_items ii
+                WHERE ii.id = ?
+            `, [item.inward_item_id]);
+
+            if (stockRows.length === 0 || stockRows[0].available < item.qty) {
+                throw new Error(`Insufficient stock for ${item.description}. Available: ${stockRows.length ? stockRows[0].available : 0}, Required: ${item.qty}`);
+            }
+        }
+
+        // Create outward entry from shipping bill data
+        const totalQty = sbItems.reduce((sum, i) => sum + (parseInt(i.qty) || 0), 0);
+        const totalValue = sbItems.reduce((sum, i) => sum + (parseFloat(i.value_amount) || 0), 0);
+        const totalDuty = sbItems.reduce((sum, i) => sum + (parseFloat(i.duty_amount) || 0), 0);
+        const primaryInwardId = sbItems[0].inward_id;
+
+        const [outwardResult] = await connection.query(`
+            INSERT INTO outward_entries (
+                inward_id, shipping_bill_id, dispatch_date, flight_no, consignment_id,
+                shipping_bill_no, shipping_bill_date,
+                registration_no_of_means_of_transport, nature_of_removal, purpose,
+                total_dispatched, value, duty, remarks
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Re-export', 'Re-export', ?, ?, ?, ?)
+        `, [
+            primaryInwardId, bill.id, bill.shipping_bill_date, bill.flight_no,
+            bill.consignment_id, bill.shipping_bill_no, bill.shipping_bill_date,
+            bill.vt || null,
+            totalQty, totalValue, totalDuty,
+            `Dispatched from Shipping Bill #${bill.shipping_bill_no}`
+        ]);
+
+        const outwardId = outwardResult.insertId;
+
+        for (const item of sbItems) {
+            const perUnitValue = item.qty > 0 ? (parseFloat(item.value_amount) || 0) / item.qty : 0;
+            const perUnitDuty = item.qty > 0 ? (parseFloat(item.duty_amount) || 0) / item.qty : 0;
+            
+            await connection.query(`
+                INSERT INTO outward_items (outward_id, inward_item_id, inward_id, item_id, description, qty_dispatched, value, duty)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                outwardId, item.inward_item_id, item.inward_id, item.item_id,
+                item.description, item.qty, perUnitValue, perUnitDuty
+            ]);
+        }
+
+        // Update shipping bill status to APPROVED
+        await connection.query(`
+            UPDATE shipping_bills SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `, [approved_by || 'Manager', req.params.id]);
+
+        await connection.commit();
+        res.json({
+            message: 'Shipping bill approved & stock dispatched successfully',
+            outward_id: outwardId,
+            shipping_bill_id: bill.id
+        });
+    } catch (error) {
+        await connection.rollback();
+        res.status(error.message.includes('found') || error.message.includes('DRAFT') || error.message.includes('Insufficient') ? 400 : 500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+// Delete shipping bill (DRAFT only)
+router.delete('/:id', async (req, res) => {
+    const db = req.app.locals.db;
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        const [bills] = await connection.query('SELECT status FROM shipping_bills WHERE id = ?', [req.params.id]);
+        if (bills.length === 0) throw new Error('Shipping bill not found');
+        if (bills[0].status !== 'DRAFT') throw new Error('Only DRAFT bills can be deleted');
+
+        await connection.query('DELETE FROM shipping_bill_items WHERE shipping_bill_id = ?', [req.params.id]);
+        await connection.query('DELETE FROM shipping_bills WHERE id = ?', [req.params.id]);
+        
+        await connection.commit();
+        res.json({ message: 'Shipping bill deleted' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(error.message.includes('found') || error.message.includes('DRAFT') ? 400 : 500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+module.exports = router;

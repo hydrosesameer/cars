@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CAFS - Flight Kitchen Inventory System</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/index.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo-box"><i class="fas fa-plane-arrival"></i></div>
+          <div class="logo-text">CAFS <span>Inventory</span></div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <a href="index.html" class="nav-item active"
+            ><i class="fas fa-th-large"></i> <span>Dashboard</span></a
+          >
+          <div class="nav-label">Transactions</div>
+          <a href="inward.html" class="nav-item"
+            ><i class="fas fa-arrow-down"></i> <span>Inward Billing</span></a
+          >
+          <a href="outward.html" class="nav-item"
+            ><i class="fas fa-arrow-up"></i> <span>Outward Billing</span></a
+          >
+          <a href="stock.html" class="nav-item"
+            ><i class="fas fa-boxes"></i> <span>Balance Stock</span></a
+          >
+          <a href="damaged.html" class="nav-item"><i class="fas fa-heart-broken"></i> <span>Damaged Goods</span></a>
+          <a href="return-stock.html" class="nav-item"><i class="fas fa-undo"></i> <span>Return to Origin</span></a>
+
+          <div class="nav-label">Reports (A3)</div>
+          <a href="form-a.html" class="nav-item"
+            ><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a
+          >
+          <a href="form-b.html" class="nav-item"
+            ><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a
+          >
+
+          <div class="nav-label">Inventory Reports</div>
+          <a href="consignment-stock.html" class="nav-item"
+            ><i class="fas fa-chart-pie"></i> <span>Consignment Stock</span></a
+          >
+          <a href="detailed-stock.html" class="nav-item"
+            ><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a
+          >
+          <a href="shipping-bill.html" class="nav-item"
+            ><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a
+          >
+
+          <div class="nav-label">Master Data</div>
+          <a href="items.html" class="nav-item"
+            ><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a
+          >
+          <a href="consignments.html" class="nav-item"
+            ><i class="fas fa-building"></i> <span>Consignments</span></a
+          >
+          <a href="airline-masters.html" class="nav-item"
+            ><i class="fas fa-plane"></i> <span>Airline Masters</span></a
+          >
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="user-profile">
+            <div class="user-avatar">CA</div>
+            <div class="user-info">
+              <div class="user-name">Warehouse Mgr</div>
+              <div class="user-role">Cok15003</div>
+          </div>
+          <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
+        </div>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="main-content">
+        <!-- Header Bar -->
+        <header class="top-bar">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input
+              type="text"
+              placeholder="Search bond no, BE no, flight..."
+              id="global-search"
+            />
+          </div>
+          <div class="top-actions">
+            <button
+              class="btn btn-primary"
+              onclick="window.location.href='inward-entry.html'"
+            >
+              <i class="fas fa-plus"></i> New Inward
+            </button>
+            <button
+              class="btn btn-secondary"
+              onclick="window.location.href='outward-entry.html'"
+            >
+              <i class="fas fa-plus"></i> New Outward
+            </button>
+            <div class="divider"></div>
+            <button class="icon-btn" title="Refresh" onclick="window.location.reload()">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="icon-btn" title="Settings">
+              <i class="fas fa-cog"></i>
+            </button>
+          </div>
+        </header>
+
+        <!-- Dynamic Page Content Container -->
+        <div id="page-content" class="content-body">
+          <!-- Dashboard Page -->
+          <section id="page-dashboard" class="page active">
+
+            <!-- Welcome Banner -->
+            <div class="dash-welcome">
+              <div>
+                <h1 class="dash-title">Warehouse Dashboard</h1>
+                <p class="dash-subtitle">CAFS Customs Bonded Warehouse — Cok15003</p>
+              </div>
+              <div class="dash-date" id="dash-date"></div>
+            </div>
+
+            <!-- Stats Cards — Vibrant Gradient -->
+            <div class="dash-stats" id="stats-container">
+              <!-- Injected by JS -->
+            </div>
+
+            <!-- Quick Access Shortcuts -->
+            <div class="dash-quick-access">
+              <a href="inward-entry.html" class="quick-card quick-inward">
+                <i class="fas fa-arrow-down"></i>
+                <span>New Inward</span>
+              </a>
+              <a href="outward-entry.html" class="quick-card quick-outward">
+                <i class="fas fa-arrow-up"></i>
+                <span>New Outward</span>
+              </a>
+              <a href="stock.html" class="quick-card quick-stock">
+                <i class="fas fa-boxes"></i>
+                <span>Balance Stock</span>
+              </a>
+              <a href="damaged.html" class="quick-card quick-damaged">
+                <i class="fas fa-heart-broken"></i>
+                <span>Damaged Goods</span>
+              </a>
+              <a href="form-a.html" class="quick-card quick-report">
+                <i class="fas fa-file-invoice"></i>
+                <span>Form-A</span>
+              </a>
+              <a href="shipping-bill.html" class="quick-card quick-shipping">
+                <i class="fas fa-file-export"></i>
+                <span>Shipping Bill</span>
+              </a>
+            </div>
+
+            <!-- Data Tables Grid -->
+            <div class="dashboard-grid">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title"><i class="fas fa-arrow-down" style="color: var(--accent-green); margin-right: 0.5rem;"></i>Recent Inward</h3>
+                  <button class="btn btn-sm btn-outline" onclick="window.location.href='inward.html'">View All</button>
+                </div>
+                <div class="card-body" style="padding: 0">
+                  <table class="table" id="recent-inward-table">
+                    <thead><tr><th>Date</th><th>Bond No</th><th>Description</th><th>Qty</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title"><i class="fas fa-arrow-up" style="color: var(--accent-blue); margin-right: 0.5rem;"></i>Recent Dispatches</h3>
+                  <button class="btn btn-sm btn-outline" onclick="window.location.href='outward.html'">View All</button>
+                </div>
+                <div class="card-body" style="padding: 0">
+                  <table class="table" id="recent-outward-table">
+                    <thead><tr><th>Date</th><th>Items</th><th>Qty</th><th>Bag</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <!-- Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- App Engine Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+    <script src="js/app.js?v=2"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        if (!authCheck()) return;
+        await loadDashboard();
+      });
+    </script>
+  </body>
+</html>
