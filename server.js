@@ -60,17 +60,30 @@ app.use((err, req, res, next) => {
 });
 
 async function initDB() {
+    console.log("Initializing database...");
     try {
+        // Test connection
+        await pool.query("SELECT 1");
+        console.log("✅ Database connection successful");
+
         const schemaPath = path.join(__dirname, "database", "schema.sql");
-        const schema = fs.readFileSync(schemaPath, "utf8");
-        await pool.query(schema);
+        if (fs.existsSync(schemaPath)) {
+            const schema = fs.readFileSync(schemaPath, "utf8");
+            await pool.query(schema);
+            console.log("✅ Schema check complete");
+        }
         
-        const [rows] = await pool.query("SELECT COUNT(*) as count FROM items");
-        if (rows[0].count === 0) {
-            const seedPath = path.join(__dirname, "database", "seed.sql");
-            const seed = fs.readFileSync(seedPath, "utf8");
-            await pool.query(seed);
-            console.log("Database seeded with initial data");
+        const [rows] = await pool.query("SHOW TABLES LIKE 'items'");
+        if (rows.length > 0) {
+            const [countRows] = await pool.query("SELECT COUNT(*) as count FROM items");
+            if (countRows[0].count === 0) {
+                const seedPath = path.join(__dirname, "database", "seed.sql");
+                if (fs.existsSync(seedPath)) {
+                    const seed = fs.readFileSync(seedPath, "utf8");
+                    await pool.query(seed);
+                    console.log("✅ Database seeded with initial data");
+                }
+            }
         }
         
         // Migrations
@@ -83,13 +96,13 @@ async function initDB() {
         } catch (e) {
             console.log("Migration check:", e.message);
         }
-        
-        app.listen(PORT, () => {
-            console.log(`🚀 CAFS Inventory Server running at http://localhost:${PORT}`);
-        });
     } catch(err) {
-        console.error("Failed to initialize database:", err);
+        console.error("❌ Failed to initialize database:", err.message);
+        console.error("Please ensure MYSQL_URL is correctly set in Railway environment variables.");
     }
 }
 
-initDB();
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 CAFS Inventory Server running at http://0.0.0.0:${PORT}`);
+    initDB();
+});
