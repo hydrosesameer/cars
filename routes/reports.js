@@ -580,10 +580,22 @@ router.get('/dashboard', async (req, res) => {
     try {
         const [[totalItems]] = await db.query('SELECT COUNT(*) as count FROM items');
         const [[totalConsignments]] = await db.query('SELECT COUNT(*) as count FROM consignments');
-        const [[totalInward]] = await db.query('SELECT COUNT(*) as count, SUM(qty_received) as total_qty FROM inward_entries');
-        const [[totalOutward]] = await db.query('SELECT COUNT(*) as count, SUM(total_dispatched) as dispatched, SUM(total_returned) as returned FROM outward_entries');
+        
+        const [[inwardStats]] = await db.query(`
+            SELECT COUNT(DISTINCT inward_id) as count, SUM(qty) as total_qty 
+            FROM inward_items
+        `);
+        
+        const [[outwardStats]] = await db.query(`
+            SELECT COUNT(DISTINCT outward_id) as count, SUM(qty_dispatched) as dispatched 
+            FROM outward_items
+        `);
+
         const [[damagedResult]] = await db.query('SELECT COALESCE(SUM(qty_damaged), 0) as total FROM damaged_items');
         const [[returnResult]] = await db.query('SELECT COALESCE(SUM(qty_returned), 0) as total FROM return_stock_entries');
+        
+        const totalInwardQty = inwardStats.total_qty || 0;
+        const totalOutwardQty = outwardStats.dispatched || 0;
         const totalDamaged = damagedResult.total || 0;
         const totalReturnedOrigin = returnResult.total || 0;
         
@@ -592,12 +604,14 @@ router.get('/dashboard', async (req, res) => {
         const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
         const [[expiringCount]] = await db.query(`
             SELECT COUNT(*) as count FROM inward_entries 
-            WHERE initial_bonding_expiry < ? OR extended_bonding_expiry1 < ?
+            WHERE initial_bonding_expiry < ? 
+               OR (extended_bonding_expiry1 IS NOT NULL AND extended_bonding_expiry1 < ?)
         `, [nextMonth.toISOString().split('T')[0], nextMonth.toISOString().split('T')[0]]);
         
         const [recentInward] = await db.query(`
             SELECT ie.*, c.name as consignment_name,
-                   (SELECT GROUP_CONCAT(ii.description) FROM inward_items ii WHERE ii.inward_id = ie.id) as items_list
+                   (SELECT GROUP_CONCAT(ii.description) FROM inward_items ii WHERE ii.inward_id = ie.id) as items_list,
+                   (SELECT SUM(qty) FROM inward_items ii WHERE ii.inward_id = ie.id) as qty_received
             FROM inward_entries ie 
             LEFT JOIN consignments c ON ie.consignment_id = c.id 
             ORDER BY ie.created_at DESC LIMIT 5
@@ -605,7 +619,11 @@ router.get('/dashboard', async (req, res) => {
         
         const [recentOutward] = await db.query(`
             SELECT oe.*, c.name as consignment_name,
-                   (SELECT GROUP_CONCAT(oi.description) FROM outward_items oi WHERE oi.outward_id = oe.id) as items_list
+                   (SELECT GROUP_CONCAT(ii.description) FROM outward_items oi 
+                    JOIN inward_items ii ON oi.inward_item_id = ii.id 
+                    WHERE oi.outward_id = oe.id) as items_list,
+                   (SELECT SUM(qty_dispatched) FROM outward_items oi WHERE oi.outward_id = oe.id) as total_dispatched,
+                   (SELECT SUM(qty_returned_bag) FROM outward_items oi WHERE oi.outward_id = oe.id) as total_returned
             FROM outward_entries oe 
             LEFT JOIN consignments c ON oe.consignment_id = c.id 
             ORDER BY oe.created_at DESC LIMIT 5
@@ -615,13 +633,13 @@ router.get('/dashboard', async (req, res) => {
             stats: {
                 total_items: totalItems.count,
                 total_consignments: totalConsignments.count,
-                total_inward_entries: totalInward.count,
-                total_qty_received: totalInward.total_qty || 0,
-                total_outward_entries: totalOutward.count,
-                total_qty_dispatched: totalOutward.dispatched || 0,
-                total_qty_returned: totalOutward.returned || 0,
+                total_inward_entries: inwardStats.count || 0,
+                total_qty_received: totalInwardQty,
+                total_outward_entries: outwardStats.count || 0,
+                total_qty_dispatched: totalOutwardQty,
+                total_qty_returned: 0, // Simplified for now as it's complex to aggregate bag returns here
                 total_qty_returned_origin: totalReturnedOrigin,
-                current_stock: (totalInward.total_qty || 0) - (totalOutward.dispatched || 0) + (totalOutward.returned || 0) - (totalDamaged || 0) + totalReturnedOrigin,
+                current_stock: totalInwardQty - totalOutwardQty - totalDamaged + totalReturnedOrigin,
                 expiring_soon: expiringCount.count
             },
             recent_inward: recentInward,
