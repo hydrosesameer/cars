@@ -18,7 +18,7 @@ app.locals.db = pool;
 // Auth route (simple hardcoded)
 app.post("/api/auth/login", (req, res) => {
   const { username, password } = req.body;
-  if (username === "admin" && password === "admin123") {
+  if (username === "cafscochin" && password === "CAF@cochin_123") {
     return res.json({
       token: "cafs-session-" + Date.now(),
       user: { name: "Warehouse Manager", role: "Admin", code: "Cok15003" }
