@@ -55,8 +55,12 @@ app.use("/api/return-stock", returnStockRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
+  console.error("❌ SERVER ERROR:", err.stack);
+  res.status(500).json({ 
+    error: "Internal Server Error", 
+    message: err.message,
+    details: process.env.NODE_ENV === 'production' ? 'See server logs' : err.stack 
+  });
 });
 
 async function initDB() {
