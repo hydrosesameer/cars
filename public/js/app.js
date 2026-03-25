@@ -4088,13 +4088,17 @@ function downloadFormAPDF() {
 
   // Temporarily force width for high-res capture matching A3 landscape
   const originalWidth = container.style.width;
+  const originalMaxWidth = container.style.maxWidth;
   container.style.width = '1600px';
+  container.style.maxWidth = 'none';
 
   html2pdf().set(opt).from(container).save().then(() => {
     container.style.width = originalWidth;
+    container.style.maxWidth = originalMaxWidth;
     showToast('PDF downloaded successfully!');
   }).catch(err => {
     container.style.width = originalWidth;
+    container.style.maxWidth = originalMaxWidth;
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
@@ -4118,13 +4122,17 @@ function downloadFormBPDF() {
 
   // Temporarily force width for high-res capture matching A3 landscape
   const originalWidth = container.style.width;
+  const originalMaxWidth = container.style.maxWidth;
   container.style.width = '1600px';
+  container.style.maxWidth = 'none';
 
   html2pdf().set(opt).from(container).save().then(() => {
     container.style.width = originalWidth;
+    container.style.maxWidth = originalMaxWidth;
     showToast('PDF downloaded successfully!');
   }).catch(err => {
     container.style.width = originalWidth;
+    container.style.maxWidth = originalMaxWidth;
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
@@ -4148,13 +4156,17 @@ function downloadStockPDF() {
 
   // Temporarily force width for high-res capture
   const originalWidth = container.style.width;
+  const originalMaxWidth = container.style.maxWidth;
   container.style.width = '1200px';
+  container.style.maxWidth = 'none';
 
   html2pdf().set(opt).from(container).save().then(() => {
     container.style.width = originalWidth;
+    container.style.maxWidth = originalMaxWidth;
     showToast('PDF downloaded successfully!');
   }).catch(err => {
     container.style.width = originalWidth;
+    container.style.maxWidth = originalMaxWidth;
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
