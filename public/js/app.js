@@ -4078,14 +4078,14 @@ function downloadFormAPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
 
-  // Wrap HTML in a fixed-width container for the PDF worker
+  // Exact A3 Landscape width at 96dpi is ~1587px. Using 1580px for safety.
   const htmlContent = `
-    <div style="width: 1580px; padding: 10px; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1580px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
       <style>
         .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
-        .table-bordered th, .table-bordered td { border: 1px solid #d1d5db !important; padding: 4px; }
-        .text-center { text-center: center !important; }
-        .report-table { font-size: 8px; }
+        .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px; }
+        .text-center { text-align: center !important; }
+        .report-table { font-size: 8px; width: 100%; }
         h4, h5 { margin: 5px 0; text-align: center; }
       </style>
       ${container.innerHTML}
@@ -4093,10 +4093,10 @@ function downloadFormAPDF() {
   `;
 
   const opt = {
-    margin:       [10, 10, 10, 10],
+    margin:       0,
     filename:     `Form-A_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1580 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
@@ -4118,12 +4118,12 @@ function downloadFormBPDF() {
   showToast('Generating PDF... Please wait.', 'info');
 
   const htmlContent = `
-    <div style="width: 1580px; padding: 10px; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1580px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
       <style>
         .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
-        .table-bordered th, .table-bordered td { border: 1px solid #d1d5db !important; padding: 4px; }
-        .text-center { text-center: center !important; }
-        .report-table { font-size: 8px; }
+        .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px; }
+        .text-center { text-align: center !important; }
+        .report-table { font-size: 8px; width: 100%; }
         h4, h5 { margin: 5px 0; text-align: center; }
       </style>
       ${container.innerHTML}
@@ -4131,10 +4131,10 @@ function downloadFormBPDF() {
   `;
 
   const opt = {
-    margin:       [10, 10, 10, 10],
+    margin:       0,
     filename:     `Form-B_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1580 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
@@ -4156,10 +4156,10 @@ function downloadStockPDF() {
   showToast('Generating PDF... Please wait.', 'info');
 
   const htmlContent = `
-    <div style="width: 1100px; padding: 10px; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1100px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
       <style>
         .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
-        .table-bordered th, .table-bordered td { border: 1px solid #d1d5db !important; padding: 4px; }
+        .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px; }
         th { background-color: #f9fafb; text-align: left; font-size: 10px; }
         td { font-size: 9px; }
       </style>
@@ -4168,10 +4168,10 @@ function downloadStockPDF() {
   `;
 
   const opt = {
-    margin:       [5, 5, 5, 5],
+    margin:       0,
     filename:     `Current_Stock_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 1.5, useCORS: true, windowWidth: 1200 },
+    html2canvas:  { scale: 1.5, useCORS: true, windowWidth: 1100 },
     jsPDF:        { unit: 'pt', format: 'a4', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
