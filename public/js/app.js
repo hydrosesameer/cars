@@ -1679,23 +1679,6 @@ async function loadStockPage() {
 // Reports
 // ============================================
 
-async function loadFormAPage() {
-  // Items dropdown
-  items = await apiCall("/items");
-  document.getElementById("forma-item").innerHTML =
-    `<option value="">All Items</option>` +
-    items
-      .map((i) => `<option value="${i.id}">${i.description}</option>`)
-      .join("");
-  // Bonds dropdown
-  const inwardEntries = await apiCall("/inward");
-  const distinctBonds = [...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort();
-  document.getElementById("forma-bond").innerHTML =
-    `<option value="">Search Bond No</option>` +
-    distinctBonds.map(bond => `<option value="${bond}">${bond}</option>`).join("");
-
-  setTimeout(initSearchableSelects, 100);
-}
 
 async function generateFormA() {
   const params = new URLSearchParams();
