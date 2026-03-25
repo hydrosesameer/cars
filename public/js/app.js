@@ -1675,7 +1675,36 @@ async function loadStockPage() {
   }
 }
 
+// ============================================
+// Reports
+// ============================================
 
+async function loadFormAPage() {
+  try {
+    items = await apiCall("/items");
+    const itemSelect = document.getElementById("forma-item");
+    const bondSelect = document.getElementById("forma-bond");
+    if (!itemSelect || !bondSelect) return;
+    const itemOptions = items.map(i => ({ value: i.id, text: i.description }));
+    if (itemSelect.tomselect) {
+      itemSelect.tomselect.clearOptions();
+      itemSelect.tomselect.addOptions(itemOptions);
+    } else {
+      itemSelect.innerHTML = `<option value="">All Items</option>` + items.map(i => `<option value="${i.id}">${i.description}</option>`).join("");
+    }
+    const inwardEntries = await apiCall("/inward");
+    const distinctBonds = [...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort();
+    const bondOptions = distinctBonds.map(b => ({ value: b, text: b }));
+    if (bondSelect.tomselect) {
+      bondSelect.tomselect.clearOptions();
+      bondSelect.tomselect.addOptions(bondOptions);
+      bondSelect.tomselect.refreshOptions(false);
+    } else {
+      bondSelect.innerHTML = `<option value="">Search Bond No</option>` + distinctBonds.map(bond => `<option value="${bond}">${bond}</option>`).join("");
+    }
+    setTimeout(initSearchableSelects, 100);
+  } catch (err) { console.error("loadFormAPage error:", err); }
+}
 
 async function generateFormA() {
   const params = new URLSearchParams();
