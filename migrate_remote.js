@@ -1,9 +1,11 @@
 const mysql = require('mysql2/promise');
+const fs = require('fs');
+const path = require('path');
 
 async function migrateData() {
     const args = process.argv.slice(2);
     if (args.length < 4) {
-        console.log("Usage: node migrate_remote.js <HOST> <USER> <PASSWORD> <DATABASE>");
+        console.log("Usage: node migrate_remote.js <HOST:PORT> <USER> <PASSWORD> <DATABASE>");
         process.exit(1);
     }
 
@@ -28,27 +30,44 @@ async function migrateData() {
         multipleStatements: true
     });
 
-    const tables = [
-        'users', 'branches', 'consignments', 'items', 
+    console.log("Cleaning up remote database structure...");
+    await remoteDb.query("SET FOREIGN_KEY_CHECKS = 0;");
+    
+    // Explicitly drop tables in reverse order to ensure clean state
+    const tablesToDrop = [
+        'flight_numbers', 'return_stock_entries', 'shipping_bill_items', 'shipping_bills', 
+        'damaged_items', 'outward_items', 'outward_entries', 
+        'inward_items', 'inward_entries', 'items', 'consignments', 
+        'users', 'branches'
+    ];
+    for (const t of tablesToDrop) {
+        try {
+            await remoteDb.query(`DROP TABLE IF EXISTS \`${t}\`;`);
+        } catch(e) { console.log(`Drop failed for ${t}:`, e.message); }
+    }
+
+    console.log("Applying ground-truth schema (database/schema.sql)...");
+    const schemaPath = path.join(__dirname, 'database', 'schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+    await remoteDb.query(schema);
+
+    const tablesToMigrate = [
+        'branches', 'users', 'consignments', 'items', 
         'inward_entries', 'inward_items', 'shipping_bills', 
         'outward_entries', 'outward_items', 'damaged_items', 
         'return_stock_entries', 'flight_numbers'
     ];
 
-    console.log("Starting data migration...");
-    await remoteDb.query("SET FOREIGN_KEY_CHECKS = 0;");
-
-    for (const table of tables) {
+    console.log("Starting data transfer...");
+    for (const table of tablesToMigrate) {
         console.log(`Migrating table: ${table}...`);
-        const [rows] = await localDb.query(`SELECT * FROM ${table}`);
+        const [rows] = await localDb.query(`SELECT * FROM \`${table}\``);
         if (rows.length === 0) {
-            console.log(`No data in local table ${table}. Skipping.`);
+            console.log(`No data in local ${table}. Skipping.`);
             continue;
         }
 
         console.log(`Pushing ${rows.length} rows to remote ${table}...`);
-        await remoteDb.query(`TRUNCATE TABLE ${table};`);
-
         const columns = Object.keys(rows[0]);
         const columnNames = columns.map(c => `\`${c}\``).join(', ');
 
@@ -65,7 +84,7 @@ async function migrateData() {
     }
 
     await remoteDb.query("SET FOREIGN_KEY_CHECKS = 1;");
-    console.log("✅ Migration complete!");
+    console.log("✅ Full schema & data migration complete!");
 
     await localDb.end();
     await remoteDb.end();
