@@ -1675,9 +1675,6 @@ async function loadStockPage() {
   }
 }
 
-// ============================================
-// Reports
-// ============================================
 
 
 async function generateFormA() {
