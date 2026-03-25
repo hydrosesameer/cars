@@ -1687,7 +1687,8 @@ async function loadFormAPage() {
     items
       .map((i) => `<option value="${i.id}">${i.description}</option>`)
       .join("");
-
+  // Bonds dropdown
+  const inwardEntries = await apiCall("/inward");
   const distinctBonds = [...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort();
   document.getElementById("forma-bond").innerHTML =
     `<option value="">Search Bond No</option>` +
