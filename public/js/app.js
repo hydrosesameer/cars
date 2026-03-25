@@ -3248,10 +3248,10 @@ async function initInwardEntry() {
       setFormDate("inw-receipt-date", toDateVal(entry.date_of_receipt));
       document.getElementById("inw-wh-code").value = entry.warehouse_code || "";
       document.getElementById("inw-wh-code").readOnly = true;
-      document.getElementById("inw-duty-rate").value = entry.duty_rate || "";
+      document.getElementById("inw-duty-rate").value = entry.duty_rate ? parseFloat(entry.duty_rate).toFixed(2) : "";
       
       const bondDutyRateEl = document.getElementById("inw-bond-duty-rate");
-      if (bondDutyRateEl) bondDutyRateEl.value = entry.duty_rate || "";
+      if (bondDutyRateEl) bondDutyRateEl.value = entry.duty_rate ? parseFloat(entry.duty_rate).toFixed(2) : "";
       
       // Transport Mode
       updateTransportMode(entry.mode_of_receipt || 'AIRLINE');
@@ -3261,13 +3261,13 @@ async function initInwardEntry() {
       const consignmentIdStr = entry.consignment_id ? String(entry.consignment_id) : "";
       const mode = entry.mode_of_receipt || 'AIRLINE';
 
-      if (mode === 'AIRLINE') {
-         if (airlineSelect) airlineSelect.value = consignmentIdStr;
-         // Load flight numbers for the saved airline and pre-select the saved flight
-         if (consignmentIdStr) {
-           await loadFlightNumbers(consignmentIdStr, entry.flight_no || "");
-         }
-      } else if (mode === 'SHIP') {
+      // Load airline/consignment selection regardless of mode
+      if (airlineSelect) airlineSelect.value = consignmentIdStr;
+      if (consignmentIdStr) {
+        await loadFlightNumbers(consignmentIdStr, entry.flight_no || "");
+      }
+
+      if (mode === 'SHIP') {
          if (shipSelect) shipSelect.value = consignmentIdStr;
       } else if (mode === 'ROAD') {
          const roadEl = document.getElementById("inw-transport-reg");
@@ -3280,7 +3280,7 @@ async function initInwardEntry() {
       setFormDate("inw-ext-exp1", toDateVal(entry.extended_bonding_expiry1));
       setFormDate("inw-ext-exp2", toDateVal(entry.extended_bonding_expiry2));
       setFormDate("inw-ext-exp3", toDateVal(entry.extended_bonding_expiry3));
-      document.getElementById("inw-value-rate").value = entry.value_rate || "";
+      document.getElementById("inw-value-rate").value = entry.value_rate ? parseFloat(entry.value_rate).toFixed(2) : "";
       
       inwardItemsTemp = entry.items || [];
       renderInwardBillingTable();
@@ -3568,8 +3568,8 @@ function renderInwardBillingTable() {
             <td><input type="number" step="0.01" class="form-control" value="${item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty', this.value); renderInwardBillingTable();"></td>
             <td><input type="date" class="form-control" value="${item.shelf_life_date ? item.shelf_life_date.split('T')[0] : ''}" onchange="updateInwardItemPage(${idx}, 'shelf_life_date', this.value)"></td>
             <td><input type="number" step="0.01" class="form-control" value="${item.qty_received || item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty_received', this.value)"></td>
-            <td><input type="number" step="0.01" class="form-control" value="${item.value || 0}" onchange="updateInwardItemPage(${idx}, 'value', this.value); renderInwardBillingTable();"></td>
-            <td><input type="number" step="0.01" class="form-control" value="${item.duty || 0}" onchange="updateInwardItemPage(${idx}, 'duty', this.value); renderInwardBillingTable();"></td>
+            <td><input type="number" step="0.01" class="form-control" value="${parseFloat(item.value || 0).toFixed(2)}" onchange="updateInwardItemPage(${idx}, 'value', this.value); renderInwardBillingTable();"></td>
+            <td><input type="number" step="0.01" class="form-control" value="${parseFloat(item.duty || 0).toFixed(2)}" onchange="updateInwardItemPage(${idx}, 'duty', this.value); renderInwardBillingTable();"></td>
             <td><input type="text" class="form-control" value="${formatCurrency((parseFloat(item.value) || 0) + (parseFloat(item.duty) || 0))}" readonly></td>
             <td><button class="action-btn danger" onclick="removeInwardItemPage(${idx})"><i class="fas fa-trash"></i></button></td>
         </tr>
