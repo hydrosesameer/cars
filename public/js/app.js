@@ -4077,28 +4077,38 @@ function downloadFormAPDF() {
     return;
   }
   showToast('Generating PDF... Please wait.', 'info');
+
+  // Create a clone and force it to be wide and high-res
+  const clone = container.cloneNode(true);
+  clone.style.width = '1500px';
+  clone.style.maxWidth = 'none';
+  clone.style.background = 'white';
+  clone.style.position = 'absolute';
+  clone.style.left = '-9999px';
+  clone.style.top = '0';
+  document.body.appendChild(clone);
+
+  // Force tables inside the clone to be properly sized
+  clone.querySelectorAll('table').forEach(tbl => {
+    tbl.style.width = '100%';
+    tbl.style.tableLayout = 'fixed';
+    tbl.style.minWidth = '1400px';
+  });
+
   const opt = {
     margin:       [10, 10, 10, 10],
     filename:     `Form-A_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1500 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
-  // Temporarily force width for high-res capture matching A3 landscape
-  const originalWidth = container.style.width;
-  const originalMaxWidth = container.style.maxWidth;
-  container.style.width = '1600px';
-  container.style.maxWidth = 'none';
-
-  html2pdf().set(opt).from(container).save().then(() => {
-    container.style.width = originalWidth;
-    container.style.maxWidth = originalMaxWidth;
+  html2pdf().set(opt).from(clone).save().then(() => {
+    document.body.removeChild(clone);
     showToast('PDF downloaded successfully!');
   }).catch(err => {
-    container.style.width = originalWidth;
-    container.style.maxWidth = originalMaxWidth;
+    document.body.removeChild(clone);
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
@@ -4111,28 +4121,38 @@ function downloadFormBPDF() {
     return;
   }
   showToast('Generating PDF... Please wait.', 'info');
+
+  // Create a clone and force it to be wide and high-res
+  const clone = container.cloneNode(true);
+  clone.style.width = '1500px';
+  clone.style.maxWidth = 'none';
+  clone.style.background = 'white';
+  clone.style.position = 'absolute';
+  clone.style.left = '-9999px';
+  clone.style.top = '0';
+  document.body.appendChild(clone);
+
+  // Force tables inside the clone to be properly sized
+  clone.querySelectorAll('table').forEach(tbl => {
+    tbl.style.width = '100%';
+    tbl.style.tableLayout = 'fixed';
+    tbl.style.minWidth = '1400px';
+  });
+
   const opt = {
     margin:       [10, 10, 10, 10],
     filename:     `Form-B_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1500 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
-  // Temporarily force width for high-res capture matching A3 landscape
-  const originalWidth = container.style.width;
-  const originalMaxWidth = container.style.maxWidth;
-  container.style.width = '1600px';
-  container.style.maxWidth = 'none';
-
-  html2pdf().set(opt).from(container).save().then(() => {
-    container.style.width = originalWidth;
-    container.style.maxWidth = originalMaxWidth;
+  html2pdf().set(opt).from(clone).save().then(() => {
+    document.body.removeChild(clone);
     showToast('PDF downloaded successfully!');
   }).catch(err => {
-    container.style.width = originalWidth;
-    container.style.maxWidth = originalMaxWidth;
+    document.body.removeChild(clone);
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
@@ -4145,6 +4165,17 @@ function downloadStockPDF() {
     return;
   }
   showToast('Generating PDF... Please wait.', 'info');
+
+  // Create a clone and force it to be wide and high-res
+  const clone = container.cloneNode(true);
+  clone.style.width = '1200px';
+  clone.style.maxWidth = 'none';
+  clone.style.background = 'white';
+  clone.style.position = 'absolute';
+  clone.style.left = '-9999px';
+  clone.style.top = '0';
+  document.body.appendChild(clone);
+
   const opt = {
     margin:       [5, 5, 5, 5],
     filename:     `Current_Stock_${new Date().toISOString().split('T')[0]}.pdf`,
@@ -4154,19 +4185,11 @@ function downloadStockPDF() {
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
-  // Temporarily force width for high-res capture
-  const originalWidth = container.style.width;
-  const originalMaxWidth = container.style.maxWidth;
-  container.style.width = '1200px';
-  container.style.maxWidth = 'none';
-
-  html2pdf().set(opt).from(container).save().then(() => {
-    container.style.width = originalWidth;
-    container.style.maxWidth = originalMaxWidth;
+  html2pdf().set(opt).from(clone).save().then(() => {
+    document.body.removeChild(clone);
     showToast('PDF downloaded successfully!');
   }).catch(err => {
-    container.style.width = originalWidth;
-    container.style.maxWidth = originalMaxWidth;
+    document.body.removeChild(clone);
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
