@@ -1689,9 +1689,11 @@ async function loadFormAPage() {
       .join("");
 
   // Bonds dropdown
-  const inwardEntries = await apiCall("/inward");
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
+  const inwardEntries = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
   const distinctBonds = [...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort();
-  document.getElementById("forma-bond").innerHTML = 
+  document.getElementById("forma-bond").innerHTML =
     `<option value="">Search Bond No</option>` +
     distinctBonds.map(bond => `<option value="${bond}">${bond}</option>`).join("");
 
