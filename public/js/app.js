@@ -1758,7 +1758,7 @@ async function generateFormA() {
                     <p style="margin-bottom: 0; font-size: 12px; text-align: center;">Form to be maintained by the warehouse licensee of the receipt, handling, storing and removal of the warehoused goods</p>
                     <p style="margin-bottom: 0; font-size: 12px; text-align: center;">(in terms of Circular No. 25/2016-Customs dated 08.06.2016)</p>
                     <p style="margin-bottom: 0; font-size: 14px; font-weight: bold; text-align: center;">Warehouse code:WHC NO:${data.warehouse_code}</p>
-                    <p style="margin-bottom: 0; font-size: 14px; font-weight: bold; text-align: center;">${data.warehouse_name} ${data.entries[0]?.warehouse_address || ''}</p>
+                    <p style="margin-bottom: 0; font-size: 14px; text-align: center;">${data.warehouse_address || 'M/s. Casino Air Caterers & Flight Services(Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572'}</p>
                 </div>
                 <div class="card-body" style="padding: 0; overflow: visible;">
                     <table class="table table-bordered table-sm report-table text-center" style="font-size: 6px; width: 100%; table-layout: auto;">
@@ -1881,6 +1881,21 @@ async function generateFormA() {
                                 return rows;
                             }).join("")}
                         </tbody>
+                        <tfoot style="font-weight: bold; background-color: #f8f9fa;">
+                            <tr class="text-center">
+                                <td colspan="11">GRAND TOTAL</td>
+                                <td colspan="12"></td>
+                                <td></td>
+                                <td></td>
+                                <td>${data.entries.reduce((sum, e) => sum + (e.outward_entries?.reduce((s, o) => s + Number(o.qty_dispatched || 0), 0) || 0), 0)}</td>
+                                <td>${formatCurrency(data.entries.reduce((sum, e) => sum + (e.outward_entries?.reduce((s, o) => s + Number(o.value || 0), 0) || 0), 0))}</td>
+                                <td>${formatCurrency(data.entries.reduce((sum, e) => sum + (e.outward_entries?.reduce((s, o) => s + Number(o.duty || 0), 0) || 0), 0))}</td>
+                                <td></td>
+                                <td>${data.entries.reduce((sum, e) => sum + Number(e.qty_in_stock || 0), 0)}</td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
@@ -1925,6 +1940,10 @@ async function generateFormB() {
     const url = `/reports/form-b?${params.toString()}`;
     const data = await apiCall(url);
     
+    // Defensive month name
+    const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const monthLabel = (data.month_name || monthNames[data.month] || "Unknown").toUpperCase();
+
     // Calculate last day of month for Qty column header
     const lastDay = new Date(data.year, data.month, 0).getDate();
     const qtyDateStr = `${lastDay}.${String(data.month).padStart(2, '0')}.${data.year}`;
@@ -1975,19 +1994,19 @@ async function generateFormB() {
             </style>
             <div style="width: 100%; font-family: 'Times New Roman', Times, serif; color: black; background: white; padding: 10px;">
                 <div style="text-align: center; margin-bottom: 5px;">
-                    <h4 style="font-weight: bold; margin-bottom: 5px;">${data.report_title}</h4>
+                    <h4 style="font-weight: bold; margin-bottom: 5px;">FORM-B FOR THE MONTH OF ${monthLabel} ${data.year}</h4>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin-bottom: 5px;">
-                    <span>${data.subtitle}</span>
-                    <span>(para 3 of ${data.circular_ref})</span>
-                </div>
-                <div style="font-size: 11px; font-weight: bold; margin-bottom: 10px; text-align: center;">
-                    Warehouse Code and Address : ${data.warehouse_code} and ${data.warehouse_name}
+                <div style="font-size: 11px; margin-bottom: 15px; text-align: center;">
+                    Details of goods stored in the warehouse where the period for which they may remain warehoused under section 61 is expiring in the following month.
+                    <br>
+                    (para 3 of Circular No 25/2016 -Customs dated 08.06.2016 )
+                    <br>
+                    <div style="font-weight: bold; text-align: center;">Warehouse Code and Address : ${data.warehouse_code} and ${data.warehouse_address || 'M/s. Casino Air Caterers & Flight Services(Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572'}</div>
                 </div>
                 <table class="form-b-table">
                     <thead>
                         <tr style="font-weight: bold;">
-                            <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th>
+                            <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>14</th>
                         </tr>
                         <tr style="font-weight: bold;">
                             <th style="min-width: 80px;">B.E No. Date</th>
@@ -2001,11 +2020,19 @@ async function generateFormB() {
                             <th style="min-width: 70px;">Date of Exp. of<br>extended<br>Bonding period</th>
                             <th style="min-width: 70px;">Date of Exp. of<br>extended<br>Bonding period</th>
                             <th style="min-width: 70px;">Date of Exp. of<br>extended Bonding<br>period</th>
-                            <th>Value Rate</th>
+                            <th>Remarks</th>
                             <th>Remarks</th>
                         </tr>
                     </thead>
                     <tbody>${tableRows || '<tr><td colspan="13" style="text-align:center; padding: 20px;">No items expiring</td></tr>'}</tbody>
+                    <tfoot style="font-weight: bold; background-color: #f8f9fa;">
+                        <tr style="text-align: center;">
+                            <td colspan="5">GRAND TOTAL</td>
+                            <td>${Object.values(data.grouped_entries).flat().reduce((sum, e) => sum + Number(e.qty_in_stock || 0), 0)}</td>
+                            <td>${Object.values(data.grouped_entries).flat().reduce((sum, e) => sum + Number(e.total_value || 0), 0).toFixed(2)}</td>
+                            <td colspan="6"></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         `;
@@ -4078,17 +4105,19 @@ function downloadFormAPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
 
-  // Exact A3 Landscape width at 96dpi is ~1587px. Using 1580px for safety.
   const htmlContent = `
-    <div style="width: 1580px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1580px; min-width: 1580px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
       <style>
-        .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .card { border: none !important; margin: 0 !important; padding: 0 !important; width: 1580px !important; }
+        .card-body { padding: 0 !important; margin: 0 !important; }
+        .table { width: 1580px !important; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
         .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px; }
         .text-center { text-align: center !important; }
-        .report-table { font-size: 8px; width: 100%; }
-        h4, h5 { margin: 5px 0; text-align: center; }
+        .report-table { font-size: 8px; width: 1580px !important; border: 1px solid #000; }
+        h4, h5 { margin: 5px 0; text-align: center; width: 100%; }
       </style>
-      ${container.innerHTML}
+      ${container.innerHTML.trim()}
     </div>
   `;
 
@@ -4096,7 +4125,16 @@ function downloadFormAPDF() {
     margin:       0,
     filename:     `Form-A_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1580 },
+    html2canvas:  { 
+      scale: 1, 
+      useCORS: true, 
+      letterRendering: true, 
+      logging: false, 
+      width: 1580,
+      windowWidth: 1580,
+      scrollX: 0, 
+      scrollY: 0 
+    },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
@@ -4117,16 +4155,19 @@ function downloadFormBPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
 
+  // Use a full-width wrapper (1580px) and BAKE the margins in with padding.
+  // This is much more reliable than jsPDF margins for alignment.
   const htmlContent = `
-    <div style="width: 1580px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1580px; min-width: 1580px; margin: 0; padding: 40px 60px; background: white; font-family: 'Inter', Arial, sans-serif;">
       <style>
-        .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
-        .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .table, .form-b-table { width: 1460px !important; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
+        .table-bordered th, .table-bordered td, .form-b-table th, .form-b-table td { border: 1px solid #000 !important; padding: 4px; }
         .text-center { text-align: center !important; }
-        .report-table { font-size: 8px; width: 100%; }
-        h4, h5 { margin: 5px 0; text-align: center; }
+        .report-table, .form-b-table { font-size: 8px; width: 1460px !important; border: 1px solid #000; }
+        h4, h5 { margin: 5px 0; text-align: center; width: 100%; }
       </style>
-      ${container.innerHTML}
+      ${container.innerHTML.trim()}
     </div>
   `;
 
@@ -4134,7 +4175,16 @@ function downloadFormBPDF() {
     margin:       0,
     filename:     `Form-B_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1580 },
+    html2canvas:  { 
+      scale: 1, 
+      useCORS: true, 
+      letterRendering: true, 
+      logging: false, 
+      width: 1580,
+      windowWidth: 1580,
+      scrollX: 0, 
+      scrollY: 0 
+    },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };

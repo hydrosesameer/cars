@@ -101,11 +101,25 @@ router.get('/form-a', async (req, res) => {
             };
         });
         
+        let warehouse_code = 'Cok 15003';
+        let warehouse_name = 'COCHIN';
+        let warehouse_address = 'M/s. Casino Air Caterers & Flight Services(Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572';
+        
+        if (branch_id) {
+            const [branches] = await db.query("SELECT * FROM branches WHERE id = ?", [branch_id]);
+            if (branches.length > 0) {
+                warehouse_code = branches[0].code || warehouse_code;
+                warehouse_name = branches[0].name;
+                warehouse_address = (branches[0].address || warehouse_address).trim().replace(/^and\s+/i, '');
+            }
+        }
+
         res.json({
             report_type: 'FORM-A',
             report_title: 'Form to be maintained by the warehouse licensee of the goods handling, storing and removal of the warehoused goods',
-            warehouse_code: 'Cok15003',
-            warehouse_name: 'M/s. Casino Air Caterers & Flight Services (Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572',
+            warehouse_code,
+            warehouse_name,
+            warehouse_address,
             generated_at: new Date().toISOString(),
             entries: result
         });
@@ -127,14 +141,16 @@ router.get('/form-b', async (req, res) => {
     
     try {
         // 1. Fetch branch info
-        let warehouse_code = 'Cok15173';
-        let warehouse_name = 'M/s. Casino Air Caterers & Flight Services (Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572';
+        let warehouse_code = 'Cok 15003';
+        let warehouse_name = 'COCHIN';
+        let warehouse_address = 'M/s. Casino Air Caterers & Flight Services(Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572';
         
         if (branch_id) {
             const [branches] = await db.query("SELECT * FROM branches WHERE id = ?", [branch_id]);
             if (branches.length > 0) {
                 warehouse_code = branches[0].code || warehouse_code;
-                warehouse_name = `${branches[0].name} Warehouse`;
+                warehouse_name = branches[0].name;
+                warehouse_address = (branches[0].address || warehouse_address).trim().replace(/^and\s+/i, '');
             }
         }
 
@@ -209,7 +225,9 @@ router.get('/form-b', async (req, res) => {
             circular_ref: 'In terms of Circular No 25/2016-Customs dated 08.06.2016',
             warehouse_code,
             warehouse_name,
+            warehouse_address,
             month: targetMonth,
+            month_name: monthNames[targetMonth],
             year: targetYear,
             generated_at: new Date().toISOString(),
             grouped_entries: grouped,
