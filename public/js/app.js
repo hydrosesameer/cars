@@ -4081,13 +4081,20 @@ function downloadFormAPDF() {
     margin:       [10, 10, 10, 10],
     filename:     `Form-A_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
+
+  // Temporarily force width for high-res capture matching A3 landscape
+  const originalWidth = container.style.width;
+  container.style.width = '1600px';
+
   html2pdf().set(opt).from(container).save().then(() => {
+    container.style.width = originalWidth;
     showToast('PDF downloaded successfully!');
   }).catch(err => {
+    container.style.width = originalWidth;
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
@@ -4104,20 +4111,25 @@ function downloadFormBPDF() {
     margin:       [10, 10, 10, 10],
     filename:     `Form-B_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
+
+  // Temporarily force width for high-res capture matching A3 landscape
+  const originalWidth = container.style.width;
+  container.style.width = '1600px';
+
   html2pdf().set(opt).from(container).save().then(() => {
+    container.style.width = originalWidth;
     showToast('PDF downloaded successfully!');
   }).catch(err => {
+    container.style.width = originalWidth;
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
 }
 
-window.downloadFormAPDF = downloadFormAPDF;
-window.downloadFormBPDF = downloadFormBPDF;
 function downloadStockPDF() {
   const container = document.getElementById('stock-table');
   if (!container || !container.innerHTML.trim()) {
@@ -4133,14 +4145,23 @@ function downloadStockPDF() {
     jsPDF:        { unit: 'pt', format: 'a4', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
+
+  // Temporarily force width for high-res capture
+  const originalWidth = container.style.width;
+  container.style.width = '1200px';
+
   html2pdf().set(opt).from(container).save().then(() => {
+    container.style.width = originalWidth;
     showToast('PDF downloaded successfully!');
   }).catch(err => {
+    container.style.width = originalWidth;
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
 }
 
+window.downloadFormAPDF = downloadFormAPDF;
+window.downloadFormBPDF = downloadFormBPDF;
 window.downloadStockPDF = downloadStockPDF;
 window.fetchAvailableForConsignment = fetchAvailableForConsignment;
 window.loadDetailedStockReport = loadDetailedStockReport;
