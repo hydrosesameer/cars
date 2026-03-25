@@ -2385,7 +2385,7 @@ function updateSBItemSource(idx, valueStr) {
   if (!item) return;
   const originalQty = parseInt(item.original_qty) || 1;
   const unitValue = (parseFloat(item.value) || 0) / originalQty;
-  const unitDuty = parseFloat(item.duty_rate) || ((parseFloat(item.duty) || 0) / originalQty);
+  const unitDuty = (parseFloat(item.duty) || 0) / originalQty;
   sbSelectedItems[idx] = {
     ...sbSelectedItems[idx],
     inward_item_id: item.inward_item_id,
