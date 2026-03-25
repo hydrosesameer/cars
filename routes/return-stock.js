@@ -4,14 +4,22 @@ const router = express.Router();
 // Get all return stock entries
 router.get('/', async (req, res) => {
     const db = req.app.locals.db;
+    const { branch_id } = req.query;
     try {
-        const [entries] = await db.query(`
+        let query = `
             SELECT rse.*, ie.bond_no, ii.description as item_description
             FROM return_stock_entries rse
             LEFT JOIN inward_entries ie ON rse.inward_id = ie.id
             LEFT JOIN inward_items ii ON rse.inward_item_id = ii.id
-            ORDER BY rse.return_date DESC, rse.id DESC
-        `);
+            WHERE 1=1
+        `;
+        let params = [];
+        if (branch_id) {
+            query += ' AND rse.branch_id = ?';
+            params.push(branch_id);
+        }
+        query += ' ORDER BY rse.return_date DESC, rse.id DESC';
+        const [entries] = await db.query(query, params);
         res.json(entries);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -21,10 +29,10 @@ router.get('/', async (req, res) => {
 // Create new return stock entry
 router.post('/', async (req, res) => {
     const db = req.app.locals.db;
-    const { return_date, inward_id, inward_item_id, qty_returned, remarks, authorised_by } = req.body;
+    const { return_date, inward_id, inward_item_id, qty_returned, remarks, authorised_by, branch_id } = req.body;
 
-    if (!return_date || !inward_id || !inward_item_id || !qty_returned) {
-        return res.status(400).json({ error: 'Missing required fields' });
+    if (!return_date || !inward_id || !inward_item_id || !qty_returned || !branch_id) {
+        return res.status(400).json({ error: 'Missing required fields: return_date, inward_id, inward_item_id, qty_returned, branch_id' });
     }
 
     try {
@@ -45,9 +53,9 @@ router.post('/', async (req, res) => {
         }
 
         const [result] = await db.query(`
-            INSERT INTO return_stock_entries (return_date, inward_id, inward_item_id, qty_returned, remarks, authorised_by)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `, [return_date, inward_id, inward_item_id, qty_returned, remarks, authorised_by]);
+            INSERT INTO return_stock_entries (return_date, inward_id, inward_item_id, qty_returned, remarks, authorised_by, branch_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [return_date, inward_id, inward_item_id, qty_returned, remarks, authorised_by, branch_id]);
 
         res.json({ id: result.insertId, message: 'Return stock recorded successfully' });
     } catch (error) {

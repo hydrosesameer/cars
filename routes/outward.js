@@ -4,15 +4,24 @@ const router = express.Router();
 // Get all outward entries
 router.get('/', async (req, res) => {
     const db = req.app.locals.db;
+    const { branch_id } = req.query;
     try {
-        const [entries] = await db.query(`
+        let query = `
             SELECT oe.*, c.name as consignment_name,
                    (SELECT GROUP_CONCAT(oi.description) FROM outward_items oi WHERE oi.outward_id = oe.id) as items_list,
                    (SELECT bond_no FROM inward_entries ie WHERE ie.id = oe.inward_id) as inward_bond_no
             FROM outward_entries oe
             LEFT JOIN consignments c ON oe.consignment_id = c.id
-            ORDER BY oe.dispatch_date DESC, oe.id DESC
-        `);
+            WHERE 1=1
+        `;
+        let params = [];
+        if (branch_id) {
+            query += ' AND oe.branch_id = ?';
+            params.push(branch_id);
+        }
+        query += ' ORDER BY oe.dispatch_date DESC, oe.id DESC';
+        
+        const [entries] = await db.query(query, params);
         res.json(entries);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -23,7 +32,7 @@ router.get('/', async (req, res) => {
 // IMPORTANT: This route MUST come before /:id to avoid being matched as an id parameter
 router.get('/available/items', async (req, res) => {
     const db = req.app.locals.db;
-    const { consignment_id } = req.query;
+    const { consignment_id, shipping_bill_no, flight_no, branch_id } = req.query;
     try {
         let query = `
             SELECT ii.id as inward_item_id, ii.inward_id, ii.description, ii.item_id, ii.value, ii.duty, ii.hsn_code, ii.qty as original_qty,
@@ -40,6 +49,14 @@ router.get('/available/items', async (req, res) => {
         if (consignment_id) {
             query += ' AND ie.consignment_id = ?';
             params.push(consignment_id);
+        }
+        if (flight_no) {
+            query += ' AND ie.flight_no LIKE ?'; // Assuming inward_entries has flight_no for filtering
+            params.push(`%${flight_no}%`);
+        }
+        if (branch_id) {
+            query += ' AND ie.branch_id = ?'; // Assuming inward_entries has branch_id for filtering
+            params.push(branch_id);
         }
         
         query += ' ORDER BY ie.bond_no, ii.description';
@@ -84,7 +101,7 @@ router.post('/', async (req, res) => {
     const { 
         dispatch_date, flight_no, consignment_id, shipping_bill_no, shipping_bill_date,
         registration_no_of_means_of_transport, nature_of_removal, purpose, otl_no,
-        remarks, items 
+        remarks, items, branch_id
     } = req.body;
 
     const connection = await db.getConnection();
@@ -128,12 +145,12 @@ router.post('/', async (req, res) => {
             INSERT INTO outward_entries (
                 dispatch_date, flight_no, consignment_id, shipping_bill_no, shipping_bill_date,
                 registration_no_of_means_of_transport, nature_of_removal, purpose, otl_no,
-                total_dispatched, value, duty, remarks, inward_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                total_dispatched, value, duty, remarks, inward_id, branch_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             dispatch_date, flight_no, consignment_id || null, shipping_bill_no || null, shipping_bill_date || null,
             registration_no_of_means_of_transport || null, nature_of_removal || 'Re-export', purpose || 'Re-export', otl_no || null,
-            totalQty, totalValue, totalDuty, remarks || null, primaryInwardId
+            totalQty, totalValue, totalDuty, remarks || null, primaryInwardId, branch_id || null
         ]);
 
         const outwardId = result.insertId;

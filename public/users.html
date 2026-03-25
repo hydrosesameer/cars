@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Items / Products - CAFS Inventory</title>
+    <title>User Management - CAFS Inventory</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
@@ -19,20 +19,22 @@
         <header class="top-bar" id="top-bar-container"></header>
         <div class="content-body">
           <div class="page-header">
-              <h1 class="page-title">Product Master</h1>
-              <button class="btn btn-primary" onclick="openItemModal()">
-                <i class="fas fa-plus"></i> Add Product
+              <h1 class="page-title">User Management</h1>
+              <button class="btn btn-primary" onclick="openUserModal()">
+                <i class="fas fa-plus"></i> Add User
               </button>
             </div>
             <div class="card">
               <div class="card-body" style="padding: 0">
-                <table class="table" id="items-table">
+                <table class="table" id="users-table">
                   <thead>
                     <tr>
                       <th>ID</th>
-                      <th>Description</th>
-                      <th>Unit</th>
-                      <th>Code</th>
+                      <th>Username</th>
+                      <th>Full Name</th>
+                      <th>Role</th>
+                      <th>Branch / Godown</th>
+                      <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -43,27 +45,21 @@
         </div>
       </main>
     </div>
-    <!-- Modal Overlay (Generic) -->
-    <div class="modal-overlay" id="modal-overlay">
-      <div class="modal">
-        <div class="modal-header">
-          <h3 class="modal-title" id="modal-title">Modal Title</h3>
-          <button class="btn-close" onclick="closeModal()">&times;</button>
-        </div>
-        <div class="modal-body" id="modal-body"></div>
-        <div class="modal-footer" id="modal-footer">
-          <button class="btn btn-secondary" onclick="closeModal()">Close</button>
-          <button class="btn btn-primary" id="modal-submit">Save</button>
-        </div>
-      </div>
-    </div>
+    
     <div id="toast-container" class="toast-container"></div>
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
     <script src="js/app.js?v=18"></script>
-    <script>document.addEventListener('DOMContentLoaded', async () => {
-        if (!authCheck()) return; 
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        if (!authCheck()) return;
+        const user = getAuthUser();
+        if (user.role !== 'SUPER_ADMIN') {
+            window.location.href = 'index.html';
+            return;
+        }
         initNavigation();
-        await loadItemsPage(); 
-    });</script>
+        await loadUsersPage();
+      });
+    </script>
   </body>
 </html>

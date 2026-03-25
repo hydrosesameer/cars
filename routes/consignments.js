@@ -88,4 +88,54 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// ==== Flight Numbers ====
+
+// Get flight numbers (optionally filtered by airline/consignment_id)
+router.get('/flights/list', async (req, res) => {
+    const db = req.app.locals.db;
+    const { consignment_id } = req.query;
+    try {
+        let query = 'SELECT f.*, c.name as airline_name, c.airline_code FROM flight_numbers f LEFT JOIN consignments c ON f.consignment_id = c.id WHERE f.status = "ACTIVE"';
+        let params = [];
+        if (consignment_id) {
+            query += ' AND f.consignment_id = ?';
+            params.push(consignment_id);
+        }
+        query += ' ORDER BY f.flight_no';
+        const [rows] = await db.query(query, params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Create a new flight number
+router.post('/flights', async (req, res) => {
+    const db = req.app.locals.db;
+    const { consignment_id, flight_no } = req.body;
+    if (!consignment_id || !flight_no) {
+        return res.status(400).json({ error: 'Airline and flight number are required' });
+    }
+    try {
+        const [result] = await db.query(
+            'INSERT INTO flight_numbers (consignment_id, flight_no) VALUES (?, ?)',
+            [consignment_id, flight_no]
+        );
+        res.status(201).json({ id: result.insertId, consignment_id, flight_no });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Delete a flight number
+router.delete('/flights/:id', async (req, res) => {
+    const db = req.app.locals.db;
+    try {
+        await db.query('DELETE FROM flight_numbers WHERE id = ?', [req.params.id]);
+        res.json({ message: 'Flight number deleted' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;

@@ -8,68 +8,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
     <link rel="stylesheet" href="css/index.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   </head>
   <body>
     <div class="app-container">
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <div class="logo-box"><i class="fas fa-plane-arrival"></i></div>
-          <div class="logo-text">CAFS <span>Inventory</span></div>
-        </div>
-        <nav class="sidebar-nav">
-          <a href="index.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a>
-          <div class="nav-label">Transactions</div>
-          <a href="inward.html" class="nav-item active"><i class="fas fa-arrow-down"></i> <span>Inward Billing</span></a>
-          <a href="outward.html" class="nav-item"><i class="fas fa-arrow-up"></i> <span>Outward Billing</span></a>
-          <a href="stock.html" class="nav-item"><i class="fas fa-boxes"></i> <span>Balance Stock</span></a>
-          <a href="damaged.html" class="nav-item"><i class="fas fa-heart-broken"></i> <span>Damaged Goods</span></a>
-          <a href="return-stock.html" class="nav-item"><i class="fas fa-undo"></i> <span>Return to Origin</span></a>
-          <div class="nav-label">Reports (A3)</div>
-          <a href="form-a.html" class="nav-item"><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a>
-          <a href="form-b.html" class="nav-item"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
-          <div class="nav-label">Inventory Reports</div>
-          <a href="consignment-stock.html" class="nav-item"><i class="fas fa-chart-pie"></i> <span>Consignment Stock</span></a>
-          <a href="detailed-stock.html" class="nav-item"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
-          <a href="shipping-bill.html" class="nav-item"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
-          <div class="nav-label">Master Data</div>
-          <a href="items.html" class="nav-item"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
-          <a href="consignments.html" class="nav-item"><i class="fas fa-building"></i> <span>Consignments</span></a>
-          <a href="airline-masters.html" class="nav-item"><i class="fas fa-plane"></i> <span>Airline Masters</span></a>
-        </nav>
-        <div class="sidebar-footer">
-          <div class="user-profile">
-            <div class="user-avatar">CA</div>
-            <div class="user-info">
-              <div class="user-name">Warehouse Mgr</div>
-              <div class="user-role">Cok15003</div>
-          </div>
-          <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
-        </div>
-        </div>
-      </aside>
+      <aside class="sidebar" id="sidebar-container"></aside>
 
       <main class="main-content">
-        <header class="top-bar">
-          <div class="search-box">
-            <i class="fas fa-search"></i>
-            <input type="text" placeholder="Search bond no, BE no, flight..." id="global-search" />
-          </div>
-          <div class="top-actions">
-            <button class="btn btn-primary" onclick="window.location.href='inward-entry.html'">
-              <i class="fas fa-plus"></i> New Inward
-            </button>
-            <button class="btn btn-secondary" onclick="window.location.href='outward-entry.html'">
-              <i class="fas fa-plus"></i> New Outward
-            </button>
-            <div class="divider"></div>
-            <button class="icon-btn" title="Refresh" onclick="window.location.reload()">
-              <i class="fas fa-sync-alt"></i>
-            </button>
-            <button class="icon-btn" title="Settings">
-              <i class="fas fa-cog"></i>
-            </button>
-          </div>
-        </header>
+        <header class="top-bar" id="top-bar-container"></header>
         <div class="content-body">
           <div class="page-header">
               <h1 class="page-title" id="inward-form-title">New Inward Billing</h1>
@@ -91,7 +38,7 @@
                     </div>
                     <div class="form-group">
                       <label class="form-label">BE Date *</label>
-                      <input type="date" class="form-control" id="inw-be-date" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-be-date" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Customs Station</label>
@@ -105,16 +52,16 @@
                     </div>
                     <div class="form-group">
                       <label class="form-label">Bond Date</label>
-                      <input type="date" class="form-control" id="inw-bond-date" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-bond-date" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Order Sec 60(1) Date</label>
-                      <input type="date" class="form-control" id="inw-sec60-date" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-sec60-date" />
                     </div>
                   </div>
                   <div class="form-grid-2">
                     <div class="form-group">
-                      <label class="form-label">Shipping Bill No (Import)</label>
+                      <label class="form-label">Airway Bill No</label>
                       <input type="text" class="form-control" id="inw-import-sb-no" />
                     </div>
                     <div class="form-group">
@@ -131,11 +78,11 @@
                   <div class="form-grid-3">
                     <div class="form-group">
                       <label class="form-label">Date of Receipt *</label>
-                      <input type="date" class="form-control" id="inw-receipt-date" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-receipt-date" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Warehouse Code</label>
-                      <input type="text" class="form-control" id="inw-wh-code" value="Cok15003" />
+                      <input type="text" class="form-control" id="inw-wh-code" value="Cok15003" readonly />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Duty Rate %</label>
@@ -174,7 +121,9 @@
                     </div>
                     <div class="form-group" id="airline-flight-selection">
                       <label class="form-label">Flight No *</label>
-                      <input type="text" class="form-control" id="inw-flight-no" placeholder="e.g. AI-902" />
+                      <select class="form-control searchable" id="inw-flight-no">
+                        <option value="">Select Flight</option>
+                      </select>
                     </div>
                     <div class="form-group" id="ship-selection" style="display: none">
                       <label class="form-label">Ship / Consignment</label>
@@ -196,11 +145,11 @@
                   <div class="form-grid-4">
                     <div class="form-group">
                       <label class="form-label">Initial Bond Date</label>
-                      <input type="date" class="form-control" id="inw-bond-start" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-bond-start" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Initial Bond Expiry *</label>
-                      <input type="date" class="form-control" id="inw-bond-expiry" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-bond-expiry" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Bank Guarantee</label>
@@ -208,21 +157,21 @@
                     </div>
                     <div class="form-group">
                       <label class="form-label">Duty Rate</label>
-                      <input type="number" class="form-control" id="inw-duty-rate" step="0.0001" />
+                      <input type="number" class="form-control" id="inw-bond-duty-rate" step="0.0001" />
                     </div>
                   </div>
                   <div class="form-grid-4">
                     <div class="form-group">
                       <label class="form-label">Ext Expiry 1</label>
-                      <input type="date" class="form-control" id="inw-ext-exp1" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-ext-exp1" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Ext Expiry 2</label>
-                      <input type="date" class="form-control" id="inw-ext-exp2" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-ext-exp2" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Ext Expiry 3</label>
-                      <input type="date" class="form-control" id="inw-ext-exp3" />
+                      <input type="text" data-datepicker="true" class="form-control" id="inw-ext-exp3" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Value Rate</label>
@@ -253,7 +202,8 @@
                           <th>Shelf Life Date</th>
                           <th>Qty Received *</th>
                           <th>Value *</th>
-                          <th>Duty *</th>
+                      <th>Duty *</th>
+                      <th>Total</th>
                           <th>Code</th>
                           <th></th>
                         </tr>
@@ -277,9 +227,12 @@
 
     <div id="toast-container" class="toast-container"></div>
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
-    <script src="js/app.js?v=2"></script>
+    <script src="js/app.js?v=18"></script>
     <datalist id="items-list"></datalist>
     <script>document.addEventListener('DOMContentLoaded', async () => {
-        if (!authCheck()) return; await initInwardEntry(); });</script>
+        if (!authCheck()) return; 
+        initNavigation();
+        await initInwardEntry(); 
+    });</script>
   </body>
 </html>

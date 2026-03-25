@@ -2,18 +2,29 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS return_stock_entries;
-DROP TABLE IF EXISTS shipping_bill_items;
-DROP TABLE IF EXISTS shipping_bills;
-DROP TABLE IF EXISTS damaged_items;
-DROP TABLE IF EXISTS outward_items;
-DROP TABLE IF EXISTS outward_entries;
-DROP TABLE IF EXISTS inward_items;
-DROP TABLE IF EXISTS inward_entries;
-DROP TABLE IF EXISTS items;
-DROP TABLE IF EXISTS consignments;
 
-CREATE TABLE consignments (
+CREATE TABLE IF NOT EXISTS branches (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(50) UNIQUE,
+    address TEXT,
+    status ENUM('ACTIVE', 'INACTIVE') DEFAULT 'ACTIVE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100),
+    role ENUM('SUPER_ADMIN', 'ADMIN', 'STAFF') NOT NULL DEFAULT 'STAFF',
+    branch_id INT,
+    status ENUM('ACTIVE', 'INACTIVE') DEFAULT 'ACTIVE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS consignments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     code VARCHAR(50),
@@ -27,7 +38,7 @@ CREATE TABLE consignments (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE items (
+CREATE TABLE IF NOT EXISTS items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     description VARCHAR(255) NOT NULL,
     unit VARCHAR(20) DEFAULT 'PCS',
@@ -39,7 +50,7 @@ CREATE TABLE items (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE inward_entries (
+CREATE TABLE IF NOT EXISTS inward_entries (
     id INT AUTO_INCREMENT PRIMARY KEY,
     be_no VARCHAR(50),
     be_date DATE,
@@ -82,12 +93,14 @@ CREATE TABLE inward_entries (
     warehouse_address TEXT,
     customs_station VARCHAR(100),
     remarks TEXT,
+    branch_id INT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
     FOREIGN KEY (consignment_id) REFERENCES consignments(id),
     FOREIGN KEY (item_id) REFERENCES items(id)
 );
 
-CREATE TABLE inward_items (
+CREATE TABLE IF NOT EXISTS inward_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     inward_id INT NOT NULL,
     item_id INT,
@@ -109,7 +122,7 @@ CREATE TABLE inward_items (
     FOREIGN KEY (item_id) REFERENCES items(id)
 );
 
-CREATE TABLE outward_entries (
+CREATE TABLE IF NOT EXISTS outward_entries (
     id INT AUTO_INCREMENT PRIMARY KEY,
     dispatch_date DATE NOT NULL,
     consignment_id INT,
@@ -128,12 +141,14 @@ CREATE TABLE outward_entries (
     registration_no_of_means_of_transport VARCHAR(50),
     otl_no VARCHAR(50),
     remarks TEXT,
+    branch_id INT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
     FOREIGN KEY (consignment_id) REFERENCES consignments(id),
     FOREIGN KEY (inward_id) REFERENCES inward_entries(id)
 );
 
-CREATE TABLE outward_items (
+CREATE TABLE IF NOT EXISTS outward_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     outward_id INT NOT NULL,
     inward_item_id INT NOT NULL,
@@ -150,7 +165,7 @@ CREATE TABLE outward_items (
     FOREIGN KEY (item_id) REFERENCES items(id)
 );
 
-CREATE TABLE damaged_items (
+CREATE TABLE IF NOT EXISTS damaged_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     reported_date DATE NOT NULL,
     inward_item_id INT NOT NULL,
@@ -161,7 +176,7 @@ CREATE TABLE damaged_items (
     FOREIGN KEY (inward_item_id) REFERENCES inward_items(id)
 );
 
-CREATE TABLE shipping_bills (
+CREATE TABLE IF NOT EXISTS shipping_bills (
     id INT AUTO_INCREMENT PRIMARY KEY,
     sb_no VARCHAR(50) NOT NULL UNIQUE,
     consignment_id INT,
@@ -174,7 +189,7 @@ CREATE TABLE shipping_bills (
     FOREIGN KEY (consignment_id) REFERENCES consignments(id)
 );
 
-CREATE TABLE shipping_bill_items (
+CREATE TABLE IF NOT EXISTS shipping_bill_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     shipping_bill_id INT NOT NULL,
     inward_item_id INT NOT NULL,
@@ -193,7 +208,7 @@ CREATE TABLE shipping_bill_items (
     FOREIGN KEY (inward_id) REFERENCES inward_entries(id)
 );
 
-CREATE TABLE return_stock_entries (
+CREATE TABLE IF NOT EXISTS return_stock_entries (
     id INT AUTO_INCREMENT PRIMARY KEY,
     return_date DATE NOT NULL,
     inward_id INT,

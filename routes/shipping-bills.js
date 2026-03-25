@@ -4,8 +4,9 @@ const router = express.Router();
 // Get all shipping bills
 router.get('/', async (req, res) => {
     const db = req.app.locals.db;
+    const { branch_id } = req.query;
     try {
-        const [bills] = await db.query(`
+        let query = `
             SELECT sb.*, c.name as consignment_name, c.code as consignment_code,
                    (SELECT COUNT(*) FROM shipping_bill_items sbi WHERE sbi.shipping_bill_id = sb.id) as item_count,
                    (SELECT SUM(sbi.qty) FROM shipping_bill_items sbi WHERE sbi.shipping_bill_id = sb.id) as total_qty,
@@ -13,8 +14,15 @@ router.get('/', async (req, res) => {
                    (SELECT SUM(sbi.duty_amount) FROM shipping_bill_items sbi WHERE sbi.shipping_bill_id = sb.id) as total_duty
             FROM shipping_bills sb
             LEFT JOIN consignments c ON sb.consignment_id = c.id
-            ORDER BY sb.created_at DESC, sb.id DESC
-        `);
+            WHERE 1=1
+        `;
+        let params = [];
+        if (branch_id) {
+            query += ' AND sb.branch_id = ?';
+            params.push(branch_id);
+        }
+        query += ' ORDER BY sb.created_at DESC, sb.id DESC';
+        const [bills] = await db.query(query, params);
         res.json(bills);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -24,15 +32,22 @@ router.get('/', async (req, res) => {
 // Get single shipping bill with items
 router.get('/:id', async (req, res) => {
     const db = req.app.locals.db;
+    const { branch_id } = req.query;
     try {
-        const [bills] = await db.query(`
+        let query = `
             SELECT sb.*, c.name as consignment_name, c.code as consignment_code
             FROM shipping_bills sb
             LEFT JOIN consignments c ON sb.consignment_id = c.id
             WHERE sb.id = ?
-        `, [req.params.id]);
-
-        if (bills.length === 0) return res.status(404).json({ error: 'Shipping bill not found' });
+        `;
+        let params = [req.params.id];
+        if (branch_id) {
+            query += ' AND sb.branch_id = ?';
+            params.push(branch_id);
+        }
+        
+        const [bills] = await db.query(query, params);
+        if (bills.length === 0) return res.status(404).json({ error: 'Shipping bill not found or access denied' });
         const bill = bills[0];
 
         const [items] = await db.query(`
@@ -56,7 +71,7 @@ router.post('/', async (req, res) => {
         shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
         etd, vt, port_of_discharge, country_of_destination, station,
         exporter_name, exporter_address, entered_no, entered_date,
-        remarks, items
+        remarks, items, branch_id
     } = req.body;
 
     const connection = await db.getConnection();
@@ -92,8 +107,8 @@ router.post('/', async (req, res) => {
                 shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
                 etd, vt, port_of_discharge, country_of_destination, station,
                 exporter_name, exporter_address, entered_no, entered_date,
-                remarks, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')
+                remarks, status, branch_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?)
         `, [
             shipping_bill_no, shipping_bill_date, consignment_id || null, flight_no || null,
             etd || null, vt || null,
@@ -102,7 +117,7 @@ router.post('/', async (req, res) => {
             exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
             exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
             entered_no || null, entered_date || null,
-            remarks || null
+            remarks || null, branch_id
         ]);
 
         const billId = result.insertId;
@@ -200,7 +215,13 @@ router.put('/:id', async (req, res) => {
 // Approve shipping bill (auto-creates outward entry and dispatches stock)
 router.put('/:id/approve', async (req, res) => {
     const db = req.app.locals.db;
-    const { approved_by } = req.body;
+    const { approved_by, user_role, user_branch_id } = req.body;
+
+    // Role-based access control for approval
+    const allowedRoles = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'];
+    if (!allowedRoles.includes(user_role)) {
+        return res.status(403).json({ error: 'You do not have permission to approve shipping bills. Required roles: Manager, Approver, or Admin.' });
+    }
 
     const connection = await db.getConnection();
     await connection.beginTransaction();
@@ -215,6 +236,11 @@ router.put('/:id/approve', async (req, res) => {
 
         if (bills.length === 0) throw new Error('Shipping bill not found');
         const bill = bills[0];
+
+        // Ensure branch match for non-super admins
+        if (user_role !== 'SUPER_ADMIN' && bill.branch_id !== user_branch_id) {
+            throw new Error('You can only approve shipping bills for your own branch.');
+        }
 
         if (bill.status !== 'DRAFT') throw new Error('Only DRAFT bills can be approved');
 
@@ -245,14 +271,15 @@ router.put('/:id/approve', async (req, res) => {
                 inward_id, shipping_bill_id, dispatch_date, flight_no, consignment_id,
                 shipping_bill_no, shipping_bill_date,
                 registration_no_of_means_of_transport, nature_of_removal, purpose,
-                total_dispatched, value, duty, remarks
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Re-export', 'Re-export', ?, ?, ?, ?)
+                total_dispatched, value, duty, remarks, branch_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Re-export', 'Re-export', ?, ?, ?, ?, ?)
         `, [
             primaryInwardId, bill.id, bill.shipping_bill_date, bill.flight_no,
             bill.consignment_id, bill.shipping_bill_no, bill.shipping_bill_date,
             bill.vt || null,
             totalQty, totalValue, totalDuty,
-            `Dispatched from Shipping Bill #${bill.shipping_bill_no}`
+            `Dispatched from Shipping Bill #${bill.shipping_bill_no}`,
+            bill.branch_id
         ]);
 
         const outwardId = outwardResult.insertId;

@@ -4,7 +4,7 @@ const router = express.Router();
 // Get all inward entries
 router.get('/', async (req, res) => {
     const db = req.app.locals.db;
-    const { bond_no, item_id, consignment_id } = req.query;
+    const { bond_no, item_id, consignment_id, branch_id } = req.query;
     
     try {
         let query = `
@@ -32,6 +32,10 @@ router.get('/', async (req, res) => {
             query += ' AND ie.consignment_id = ?';
             params.push(consignment_id);
         }
+        if (branch_id) {
+            query += ' AND ie.branch_id = ?';
+            params.push(branch_id);
+        }
         
         query += ' ORDER BY ie.date_of_receipt DESC, ie.id DESC';
         
@@ -45,15 +49,24 @@ router.get('/', async (req, res) => {
 // Get a single inward entry with items
 router.get('/:id', async (req, res) => {
     const db = req.app.locals.db;
+    const { branch_id } = req.query;
     try {
-        const [entries] = await db.query(`
+        let query = `
             SELECT ie.*, c.name as consignment_name 
             FROM inward_entries ie 
             LEFT JOIN consignments c ON ie.consignment_id = c.id 
             WHERE ie.id = ?
-        `, [req.params.id]);
+        `;
+        let params = [req.params.id];
         
-        if (entries.length === 0) return res.status(404).json({ error: 'Entry not found' });
+        if (branch_id) {
+            query += ' AND ie.branch_id = ?';
+            params.push(branch_id);
+        }
+        
+        const [entries] = await db.query(query, params);
+        
+        if (entries.length === 0) return res.status(404).json({ error: 'Entry not found or access denied' });
         const entry = entries[0];
         
         const [items] = await db.query(`
@@ -92,7 +105,7 @@ router.post('/', async (req, res) => {
         date_of_receipt, initial_bonding_date, initial_bonding_expiry,
         extended_bonding_date1, extended_bonding_expiry1, extended_bonding_date2, extended_bonding_expiry2,
         extended_bonding_date3, extended_bonding_expiry3, bank_guarantee, relinquishment,
-        duty_rate, value_rate, remarks, items
+        duty_rate, value_rate, remarks, items, branch_id, flight_no
     } = req.body;
 
     const connection = await db.getConnection();
@@ -119,25 +132,25 @@ router.post('/', async (req, res) => {
                 qty_received, date_of_receipt, initial_bonding_date, initial_bonding_expiry,
                 extended_bonding_date1, extended_bonding_expiry1, extended_bonding_date2, extended_bonding_expiry2,
                 extended_bonding_date3, extended_bonding_expiry3, bank_guarantee, relinquishment,
-                duty_rate, value_rate, remarks, value, duty
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-            be_no, be_date, customs_station || 'COK', bond_no, bond_date || null, shipping_bill_no || null, shipping_bill_date || null,
-            date_of_order_section_60 || null, sl_no_import_invoice || null, consignment_id || null, warehouse_code || 'Cok15003',
-            warehouse_address || 'Nayathode P.O Angamali Kerala 683572', transport_reg_no || null, otl_no || null, mode_of_receipt || 'By Road', qty_advised || totalQty,
-            totalQty, date_of_receipt, initial_bonding_date || null, initial_bonding_expiry || null,
-            extended_bonding_date1 || null, extended_bonding_expiry1 || null, extended_bonding_date2 || null, extended_bonding_expiry2 || null,
-            extended_bonding_date3 || null, extended_bonding_expiry3 || null, bank_guarantee || 'NA', relinquishment || 0,
-            duty_rate || null, value_rate || null, remarks || null, totalValue, totalDuty
-        ]);
+            duty_rate, value_rate, remarks, value, duty, branch_id, flight_no
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+        be_no, be_date, customs_station || 'COK', bond_no, bond_date || null, shipping_bill_no || null, shipping_bill_date || null,
+        date_of_order_section_60 || null, sl_no_import_invoice || null, consignment_id || null, warehouse_code || 'Cok15003',
+        warehouse_address || 'Nayathode P.O Angamali Kerala 683572', transport_reg_no || null, otl_no || null, mode_of_receipt || 'By Road', qty_advised || totalQty,
+        totalQty, date_of_receipt, initial_bonding_date || null, initial_bonding_expiry || null,
+        extended_bonding_date1 || null, extended_bonding_expiry1 || null, extended_bonding_date2 || null, extended_bonding_expiry2 || null,
+        extended_bonding_date3 || null, extended_bonding_expiry3 || null, bank_guarantee || 'NA', relinquishment || 0,
+        duty_rate || null, value_rate || null, remarks || null, totalValue, totalDuty, branch_id || null, flight_no || null
+    ]);
 
         const inwardId = result.insertId;
 
         for (const item of items) {
             await connection.query(`
-                INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null]);
+                INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null]);
         }
 
         await connection.commit();
@@ -160,9 +173,11 @@ router.put('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     try {
-        const totalQty = items.reduce((sum, i) => sum + parseInt(i.qty), 0);
-        const totalValue = items.reduce((sum, i) => sum + parseFloat(i.value || 0), 0);
-        const totalDuty = items.reduce((sum, i) => sum + parseFloat(i.duty || 0), 0);
+        console.log(`[PUT /inward/${inwardId}] Request Body:`, JSON.stringify(req.body, null, 2));
+
+        const totalQty = items.reduce((sum, i) => sum + (parseInt(i.qty) || 0), 0);
+        const totalValue = items.reduce((sum, i) => sum + (parseFloat(i.value) || 0), 0);
+        const totalDuty = items.reduce((sum, i) => sum + (parseFloat(i.duty) || 0), 0);
 
         await connection.query(`
             UPDATE inward_entries SET
@@ -176,7 +191,7 @@ router.put('/:id', async (req, res) => {
                 extended_bonding_date2 = ?, extended_bonding_expiry2 = ?,
                 extended_bonding_date3 = ?, extended_bonding_expiry3 = ?, 
                 bank_guarantee = ?, relinquishment = ?,
-                duty_rate = ?, value_rate = ?, remarks = ?, value = ?, duty = ?
+                duty_rate = ?, value_rate = ?, remarks = ?, value = ?, duty = ?, flight_no = ?
             WHERE id = ?
         `, [
             header.be_no, header.be_date, header.customs_station, header.bond_no, header.bond_date || null,
@@ -189,27 +204,28 @@ router.put('/:id', async (req, res) => {
             header.extended_bonding_date2 || null, header.extended_bonding_expiry2 || null,
             header.extended_bonding_date3 || null, header.extended_bonding_expiry3 || null,
             header.bank_guarantee || 'NA', header.relinquishment || 0,
-            header.duty_rate || null, header.value_rate || null, header.remarks || null, totalValue, totalDuty,
+            header.duty_rate || null, header.value_rate || null, header.remarks || null, totalValue, totalDuty, header.flight_no || null,
             inwardId
         ]);
 
         const [currentItems] = await connection.query('SELECT id FROM inward_items WHERE inward_id = ?', [inwardId]);
-        const currentIds = new Set(currentItems.map(i => i.id));
+        const currentIds = new Set(currentItems.map(i => parseInt(i.id)));
         const processedIds = new Set();
 
         for (const item of items) {
-            if (item.id && currentIds.has(item.id)) {
+            const itemId = item.id ? parseInt(item.id) : null;
+            if (itemId && currentIds.has(itemId)) {
                 await connection.query(`
                     UPDATE inward_items SET 
-                        item_id = ?, description = ?, qty = ?, unit = ?, value = ?, duty = ?, hsn_code = ?, shelf_life_date = ?
+                        item_id = ?, description = ?, qty = ?, unit = ?, value = ?, duty = ?, hsn_code = ?, shelf_life_date = ?, duty_percent = ?
                     WHERE id = ?
-                `, [item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.id]);
+                `, [item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null, item.id]);
                 processedIds.add(item.id);
             } else {
                 await connection.query(`
-                    INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null]);
+                    INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null]);
             }
         }
 

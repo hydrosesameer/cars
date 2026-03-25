@@ -23,8 +23,8 @@ function logout() {
 function getAuthUser() {
   try {
     const auth = JSON.parse(localStorage.getItem('cafs_auth'));
-    return auth?.user || { name: 'User', role: 'Staff', code: '' };
-  } catch { return { name: 'User', role: 'Staff', code: '' }; }
+    return auth?.user || { id: 0, username: 'guest', name: 'Guest User', role: 'STAFF', branch_id: null };
+  } catch { return { id: 0, username: 'guest', name: 'Guest User', role: 'STAFF', branch_id: null }; }
 }
 
 // Global State
@@ -313,6 +313,54 @@ function initSearchableSelects() {
   });
 }
 
+function initDatePickers() {
+  try {
+    if (typeof flatpickr !== 'undefined') {
+      const inputs = document.querySelectorAll('input[data-datepicker="true"]');
+      inputs.forEach(el => {
+        if (el._flatpickr) el._flatpickr.destroy();
+        flatpickr(el, {
+          disableMobile: true,
+          altInput: true,
+          altFormat: "d-m-Y",
+          dateFormat: "Y-m-d",
+          allowInput: true
+        });
+      });
+    }
+  } catch (e) {
+    console.error("Flatpickr initialization error:", e);
+  }
+}
+
+function loadFlatpickrAndInit() {
+  if (typeof flatpickr !== 'undefined') {
+    initDatePickers();
+  } else {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
+    script.onload = initDatePickers;
+    document.head.appendChild(script);
+    
+    if (!document.querySelector('link[href*="flatpickr"]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css';
+      document.head.appendChild(link);
+    }
+  }
+}
+
+function setFormDate(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el._flatpickr) {
+    el._flatpickr.setDate(val);
+  } else {
+    el.value = val;
+  }
+}
+
 const selectObserver = new MutationObserver((mutations) => {
   let needsInit = false;
   for (let m of mutations) {
@@ -325,6 +373,9 @@ const selectObserver = new MutationObserver((mutations) => {
           } else if (node.querySelectorAll) {
             const selects = node.querySelectorAll('select.form-control:not(.tomselected)');
             if (selects.length > 0) needsInit = true;
+            
+            const dates = node.querySelectorAll('input[type="date"]');
+            if (dates.length > 0) needsInit = true;
           }
         }
       });
@@ -332,13 +383,19 @@ const selectObserver = new MutationObserver((mutations) => {
   }
   if (needsInit) {
     // Small delay to allow DOM to settle
-    setTimeout(initSearchableSelects, 50);
+    setTimeout(() => {
+        initSearchableSelects();
+        loadFlatpickrAndInit();
+    }, 50);
   }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
   selectObserver.observe(document.body, { childList: true, subtree: true });
-  setTimeout(initSearchableSelects, 100);
+  setTimeout(() => {
+      initSearchableSelects();
+      loadFlatpickrAndInit();
+  }, 100);
 });
 
 // ============================================
@@ -346,17 +403,27 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================
 
 async function loadDashboard() {
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
   try {
-    const data = await apiCall("/reports/dashboard");
+    const data = await apiCall(`/reports/dashboard${branchId ? `?branch_id=${branchId}` : ''}`);
 
     const statsContainer = document.getElementById("stats-container");
     if (!statsContainer) return; // Not on dashboard page
 
-    // Set date
+    // Set date and info
     const dateEl = document.getElementById("dash-date");
+    const subtitleEl = document.getElementById("dash-subtitle");
+    
     if (dateEl) {
       const now = new Date();
       dateEl.innerHTML = `<div>${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`;
+    }
+
+    if (subtitleEl) {
+      const branchName = user.branch_name || 'Global View';
+      const branchCode = user.branch_code || '';
+      subtitleEl.innerHTML = `CAFS Customs Bonded Warehouse — ${branchCode ? branchCode : branchName}`;
     }
 
     statsContainer.innerHTML = `
@@ -377,8 +444,8 @@ async function loadDashboard() {
             </div>
             <div class="dash-stat grad-orange">
                 <div class="stat-icon-bg"><i class="fas fa-undo"></i></div>
-                <div class="stat-value">${data.stats.total_qty_returned.toLocaleString()}</div>
-                <div class="stat-label">Returned (Bag)</div>
+                <div class="stat-value">${(data.stats.total_qty_returned_origin || 0).toLocaleString()}</div>
+                <div class="stat-label">Returned (Origin)</div>
             </div>
             <div class="dash-stat grad-red">
                 <div class="stat-icon-bg"><i class="fas fa-exclamation-triangle"></i></div>
@@ -391,6 +458,15 @@ async function loadDashboard() {
                 <div class="stat-label">Total Items</div>
             </div>
         `;
+
+    const quickAccess = document.querySelector(".dash-quick-access");
+    if (quickAccess) {
+      quickAccess.style.display = user.role === 'SUPER_ADMIN' ? 'none' : 'grid';
+    }
+
+    if (user.role === 'SUPER_ADMIN') {
+        renderSuperAdminTools();
+    }
 
     const inwardTbody = document.querySelector("#recent-inward-table tbody");
     inwardTbody.innerHTML =
@@ -425,6 +501,171 @@ async function loadDashboard() {
       '<tr><td colspan="4" class="empty-state">No recent entries</td></tr>';
   } catch (error) {
     console.error("Dashboard load error:", error);
+  }
+}
+
+// ============================================
+// Damaged Stock
+// ============================================
+
+let currentStockData = [];
+
+async function loadDamagedItems() {
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
+  try {
+    const data = await apiCall(`/damaged${branchId ? `?branch_id=${branchId}` : ''}`);
+    
+    // Update Stats
+    const totalQty = data.reduce((sum, item) => sum + (item.qty_damaged || 0), 0);
+    const latestDate = data.length > 0 ? formatDate(data[0].reported_date) : "-";
+    
+    const statReports = document.getElementById("stat-total-reports");
+    const statQty = document.getElementById("stat-total-qty");
+    const statDate = document.getElementById("stat-latest-date");
+    
+    if (statReports) statReports.textContent = data.length;
+    if (statQty) statQty.textContent = totalQty;
+    if (statDate) statDate.textContent = latestDate;
+
+    paginateTable('damaged-table', data, (e) => `
+      <tr>
+        <td>${formatDate(e.reported_date)}</td>
+        <td><strong>${e.bond_no || '-'}</strong></td>
+        <td>${e.be_no || '-'}</td>
+        <td>${e.consignment_name || '-'}</td>
+        <td>${e.item_description || '-'}</td>
+        <td class="stock-low">${e.qty_damaged}</td>
+        <td>${e.reason || '-'}</td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn danger" onclick="deleteDamageReport(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `);
+
+    // Pre-load available stock for the modal
+    const stock = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
+    
+    // Populate bond dropdown for modal (only entries with available stock)
+    const bondSelect = document.getElementById("dmg-bond-select");
+    if (bondSelect) {
+      const entriesWithStock = stock.filter(e => e.available_stock > 0);
+      bondSelect.innerHTML = '<option value="">Select Bond...</option>' + 
+        entriesWithStock.map(e => `<option value="${e.id}">${e.bond_no} (Bal: ${e.available_stock})</option>`).join("");
+    }
+
+  } catch (error) {
+    console.error("Damaged stock load error:", error);
+  }
+}
+
+async function fetchDamageBondItems(inwardId) {
+    const container = document.getElementById('dmg-items-container');
+    const tbody = document.getElementById('dmg-items-tbody');
+    
+    if (!inwardId) {
+        if (container) container.style.display = 'none';
+        if (tbody) tbody.innerHTML = '';
+        return;
+    }
+    
+    try {
+        const items = await apiCall(`/inward/${inwardId}/stock`);
+        const itemsWithStock = items.filter(i => i.available > 0);
+        
+        if (itemsWithStock.length === 0) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="3" class="text-center">No available stock for this bond</td></tr>';
+        } else {
+            if (tbody) tbody.innerHTML = itemsWithStock.map(item => `
+                <tr>
+                    <td>${item.description}</td>
+                    <td>${item.available}</td>
+                    <td>
+                        <input type="number" class="form-control dmg-item-qty" 
+                               data-id="${item.id}" 
+                               max="${item.available}" min="0" 
+                               placeholder="0" value="">
+                    </td>
+                </tr>
+            `).join('');
+        }
+        if (container) container.style.display = 'block';
+    } catch (error) {
+        showToast("Failed to load items for bond", "error");
+    }
+}
+
+function openDamageModal() {
+  const modal = document.getElementById("damage-modal");
+  if (modal) {
+    modal.style.display = "flex";
+    modal.classList.add("active");
+  }
+}
+
+function closeDamageModal() {
+  const modal = document.getElementById("damage-modal");
+  if (modal) {
+    modal.style.display = "none";
+    modal.classList.remove("active");
+  }
+  const form = document.getElementById("damage-form");
+  if (form) form.reset();
+  const itemsContainer = document.getElementById("dmg-items-container");
+  if (itemsContainer) itemsContainer.style.display = "none";
+}
+
+async function saveDamage() {
+  const user = getAuthUser();
+  const date = document.getElementById("dmg-date").value;
+  const reason = document.getElementById("dmg-reason").value;
+  const remarks = document.getElementById("dmg-remarks").value;
+  
+  const items = [];
+  document.querySelectorAll(".dmg-item-qty").forEach(input => {
+    const qty = parseInt(input.value);
+    if (qty > 0) {
+      items.push({
+        inward_item_id: input.dataset.id,
+        qty_damaged: qty
+      });
+    }
+  });
+
+  if (items.length === 0) {
+    showToast("Please enter quantity for at least one item", "error");
+    return;
+  }
+
+  const data = {
+    items,
+    reported_date: date,
+    reason,
+    remarks,
+    reported_by: user.id || 1, // Fallback to 1 if no user.id
+    branch_id: user.branch_id
+  };
+
+  try {
+    await apiCall("/damaged", "POST", data);
+    showToast("Damage report saved successfully");
+    closeDamageModal();
+    loadDamagedItems();
+  } catch (error) {
+    console.error("Save damage error:", error);
+  }
+}
+
+async function deleteDamageReport(id) {
+  if (!confirm("Are you sure you want to delete this damage report? This will revert the stock.")) return;
+  try {
+    await apiCall(`/damaged/${id}`, "DELETE");
+    showToast("Report deleted");
+    loadDamagedItems();
+  } catch (error) {
+    console.error("Delete damage error:", error);
   }
 }
 
@@ -637,8 +878,10 @@ async function deleteConsignment(id) {
 async function loadInwardEntries() {
   try {
     const bondNo = document.getElementById("inward-search")?.value || "";
+    const user = getAuthUser();
+    const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
     inwardEntries = await apiCall(
-      `/inward${bondNo ? `?bond_no=${bondNo}` : ""}`,
+      `/inward?${bondNo ? `bond_no=${bondNo}&` : ""}${branchId ? `branch_id=${branchId}` : ""}`,
     );
 
     paginateTable('inward-table', inwardEntries, (e) => `
@@ -653,6 +896,8 @@ async function loadInwardEntries() {
                     <strong>${e.available_stock || 0}</strong>
                 </td>
                 <td>${formatCurrency(e.value)}</td>
+                <td>${formatCurrency(e.duty)}</td>
+                <td>${formatCurrency((parseFloat(e.value) || 0) + (parseFloat(e.duty) || 0))}</td>
                 <td>
                     <div class="action-btns">
                         <button class="action-btn" onclick="viewInwardDetails(${e.id})" title="View"><i class="fas fa-eye"></i></button>
@@ -845,6 +1090,7 @@ async function saveInward(id) {
     extended_bonding_expiry2: document.getElementById("inw-ext-expiry2").value,
     remarks: document.getElementById("inw-remarks").value,
     items: inwardItemsTemp,
+    branch_id: getAuthUser().branch_id
   };
 
   if (!data.be_no || !data.be_date || !data.bond_no || !data.date_of_receipt) {
@@ -862,7 +1108,7 @@ async function saveInward(id) {
       showToast("Entry updated");
     } else {
       await apiCall("/inward", "POST", data);
-      showToast("Inward entry created with " + data.items.length + " items");
+  showToast("Inward entry created with " + data.items.length + " items");
     }
     closeModal();
     loadInwardEntries();
@@ -872,12 +1118,16 @@ async function saveInward(id) {
 }
 
 async function editInward(id) {
-  const entry = await apiCall(`/inward/${id}`);
+  const user = getAuthUser();
+  const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+  const entry = await apiCall(`/inward/${id}${branchId ? `?branch_id=${branchId}` : ''}`);
   if (entry) openInwardModal(entry);
 }
 
 async function viewInwardDetails(id) {
-  const entry = await apiCall(`/inward/${id}`);
+  const user = getAuthUser();
+  const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+  const entry = await apiCall(`/inward/${id}${branchId ? `?branch_id=${branchId}` : ''}`);
   const body = `
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
             <div><strong>BE No:</strong> ${entry.be_no}</div>
@@ -890,7 +1140,7 @@ async function viewInwardDetails(id) {
         </div>
         <h4 style="margin: 1rem 0;"><i class="fas fa-list"></i> Items</h4>
         <table class="table">
-            <thead><tr><th>Description</th><th>Qty</th><th>Available</th><th>Value</th><th>Duty</th></tr></thead>
+            <thead><tr><th>Description</th><th>Qty</th><th>Available</th><th>Duty %</th><th>Value</th><th>Duty</th><th>Total</th></tr></thead>
             <tbody>
                 ${
                   (entry.items || [])
@@ -900,8 +1150,10 @@ async function viewInwardDetails(id) {
                         <td>${i.description || i.item_description || "-"}</td>
                         <td>${i.qty}</td>
                         <td class="${i.available_qty <= 0 ? "stock-low" : "stock-high"}"><strong>${i.available_qty}</strong></td>
+                        <td>${i.duty_percent || "0"}</td>
                         <td>${formatCurrency(i.value)}</td>
                         <td>${formatCurrency(i.duty)}</td>
+                        <td>${formatCurrency((parseFloat(i.value) || 0) + (parseFloat(i.duty) || 0))}</td>
                     </tr>
                 `,
                     )
@@ -945,8 +1197,11 @@ async function viewInwardDetails(id) {
 // ============================================
 
 async function loadOutwardEntries() {
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
   try {
-    outwardEntries = await apiCall("/outward");
+    const data = await apiCall(`/outward${branchId ? `?branch_id=${branchId}` : ''}`);
+    outwardEntries = data; // Sync global state
     paginateTable('outward-table', outwardEntries, (e) => `
             <tr>
                 <td>${formatDate(e.dispatch_date)}</td>
@@ -1055,8 +1310,10 @@ async function fetchAvailableForConsignment(consignmentId) {
   }
 
   try {
+    const user = getAuthUser();
+    const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
     availableInwardItems = await apiCall(
-      `/outward/available/items?consignment_id=${consignmentId}`,
+      `/outward/available/items?consignment_id=${consignmentId}${branchId ? `&branch_id=${branchId}` : ''}`,
     );
     document.getElementById("btn-add-outward-item").disabled = false;
     outwardItemsTemp = [];
@@ -1159,7 +1416,9 @@ async function saveOutward() {
     shipping_bill_date: document.getElementById("out-sb-date").value,
     purpose: document.getElementById("out-purpose").value,
     remarks: document.getElementById("out-remarks").value,
+    authorised_by: getAuthUser().username,
     items: outwardItemsTemp,
+    branch_id: getAuthUser().branch_id
   };
 
   if (!data.dispatch_date) {
@@ -1394,8 +1653,10 @@ async function viewOutward(id) {
 // ============================================
 
 async function loadStockPage() {
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
   try {
-    const entries = await apiCall("/inward");
+    const entries = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
     const stockEntries = entries.filter((e) => e.available_stock > 0);
     paginateTable('stock-table', stockEntries, (e) => `
             <tr>
@@ -1419,12 +1680,21 @@ async function loadStockPage() {
 // ============================================
 
 async function loadFormAPage() {
-  items = await apiCall("/items"); // Always fetch fresh
+  // Items dropdown
+  items = await apiCall("/items");
   document.getElementById("forma-item").innerHTML =
     `<option value="">All Items</option>` +
     items
       .map((i) => `<option value="${i.id}">${i.description}</option>`)
       .join("");
+
+  // Bonds dropdown
+  const inwardEntries = await apiCall("/inward");
+  const distinctBonds = [...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort();
+  document.getElementById("forma-bond").innerHTML = 
+    `<option value="">Search Bond No</option>` +
+    distinctBonds.map(bond => `<option value="${bond}">${bond}</option>`).join("");
+
   setTimeout(initSearchableSelects, 100);
 }
 
@@ -1439,10 +1709,9 @@ async function generateFormA() {
   if (bondNo) params.append("bond_no", bondNo);
   if (fromDate) params.append("from_date", fromDate);
   if (toDate) params.append("to_date", toDate);
+  const user = getAuthUser();
+  if (user.role !== 'SUPER_ADMIN' && user.branch_id) params.append("branch_id", user.branch_id);
 
-// Make functions global for onclick
-window.loadFormAPage = loadFormAPage;
-window.generateFormA = generateFormA;
 
   try {
     console.log(`Generating Form A with params: item_id=${itemId}, bond_no=${bondNo}, from=${fromDate}, to=${toDate}`);
@@ -1588,8 +1857,8 @@ window.generateFormA = generateFormA;
                                         <td>-</td>
                                         <td>-</td>
                                         <td><strong>${balance}</strong></td>
-                                        <td>${entry.value_rate || '-'}</td>
-                                        <td>${entry.duty_rate || '-'}</td>
+                                        <td>${entry.value_rate ? Number(entry.value_rate).toFixed(2) : '-'}</td>
+                                        <td>${entry.duty_rate ? Number(entry.duty_rate).toFixed(2) : '-'}</td>
                                     </tr>`;
                                 }
 
@@ -1644,10 +1913,16 @@ async function generateFormB() {
   const year = document.getElementById("formb-year").value;
   const airlineId = document.getElementById("formb-airline").value;
 
+  const params = new URLSearchParams();
+  if (month) params.append("month", month);
+  if (year) params.append("year", year);
+  if (airlineId) params.append("consignment_id", airlineId);
+  const user = getAuthUser();
+  const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+  if (branchId) params.append("branch_id", branchId);
+
   try {
-    let url = `/reports/form-b?month=${month}&year=${year}`;
-    if (airlineId) url += `&consignment_id=${airlineId}`;
-    
+    const url = `/reports/form-b?${params.toString()}`;
     const data = await apiCall(url);
     
     // Calculate last day of month for Qty column header
@@ -1658,15 +1933,15 @@ async function generateFormB() {
     for (const [consignment, entries] of Object.entries(data.grouped_entries)) {
       tableRows += `<tr><td colspan="13" style="text-align: center; font-weight: bold;">${consignment}</td></tr>`;
       entries.forEach((e) => {
-        const valRate = e.value_rate ? Number(e.value_rate).toFixed(3) : (e.value && e.qty_received ? (e.value / e.qty_received).toFixed(3) : "");
+        const valRate = e.value_rate ? Number(e.value_rate).toFixed(2) : (e.total_value && e.total_qty_received ? (e.total_value / e.total_qty_received).toFixed(2) : "");
         tableRows += `<tr style="text-align: center; vertical-align: middle;">
-          <td>${e.be_no || ""}/${formatDate(e.be_date)}</td>
-          <td>${e.bond_no || ""}</td>
+          <td>${e.be_no || "Multiple"}/${formatDate(e.be_date)}</td>
+          <td>${e.bond_no || "Multiple"}</td>
           <td>${formatDate(e.date_of_order_section_60)}</td>
-          <td>${e.sl_no_import_invoice || ""}</td>
-          <td>${e.description || "-"}</td>
+          <td>${e.sl_no_import_invoice || "Multiple"}</td>
+          <td>${e.description || "Consolidated Stocks"}</td>
           <td>${e.qty_in_stock}</td>
-          <td>${e.value ? Number(e.value).toFixed(2) : ""}</td>
+          <td>${e.total_value ? Number(e.total_value).toFixed(2) : "0.00"}</td>
           <td>${formatDate(e.initial_bonding_expiry)}</td>
           <td>${formatDate(e.extended_bonding_expiry1)}</td>
           <td>${formatDate(e.extended_bonding_expiry2)}</td>
@@ -1712,7 +1987,7 @@ async function generateFormB() {
                 <table class="form-b-table">
                     <thead>
                         <tr style="font-weight: bold;">
-                            <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>14</th>
+                            <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th>
                         </tr>
                         <tr style="font-weight: bold;">
                             <th style="min-width: 80px;">B.E No. Date</th>
@@ -1726,7 +2001,7 @@ async function generateFormB() {
                             <th style="min-width: 70px;">Date of Exp. of<br>extended<br>Bonding period</th>
                             <th style="min-width: 70px;">Date of Exp. of<br>extended<br>Bonding period</th>
                             <th style="min-width: 70px;">Date of Exp. of<br>extended Bonding<br>period</th>
-                            <th>Remarks</th>
+                            <th>Value Rate</th>
                             <th>Remarks</th>
                         </tr>
                     </thead>
@@ -1745,40 +2020,46 @@ var sbAvailableItems = [];
 var sbSelectedItems = [];
 
 async function loadShippingBillsListPage() {
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
   try {
-    const bills = await apiCall("/shipping-bills");
-    paginateTable('shipping-bills-table', bills, (b) => `
+    const bills = await apiCall(`/shipping-bills${branchId ? `?branch_id=${branchId}` : ''}`);
+    const canApprove = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'].includes(user.role);
+
+    paginateTable('shipping-bills-table', bills, (e) => `
       <tr>
-        <td><strong>${b.shipping_bill_no}</strong></td>
-        <td>${b.shipping_bill_date || "-"}</td>
-        <td>${b.flight_no || "-"}</td>
-        <td>${b.consignment_name || "-"}</td>
-        <td>${b.item_count || 0}</td>
-        <td>${b.total_qty || 0}</td>
-        <td>₹${parseFloat(b.total_value || 0).toFixed(2)}</td>
-        <td>₹${parseFloat(b.total_duty || 0).toFixed(2)}</td>
-        <td>${getStatusBadge(b.status)}</td>
+        <td><strong>${e.shipping_bill_no}</strong></td>
+        <td>${formatDate(e.shipping_bill_date)}</td>
+        <td>${e.flight_no || '-'}</td>
+        <td>${e.consignment_name || '-'}</td>
+        <td>${e.item_count || 0}</td>
+        <td class="stock-medium">${(e.total_qty || 0).toLocaleString()}</td>
+        <td>₹${(e.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        <td>₹${(e.total_duty || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        <td><span class="badge ${getStatusBadge(e.status)}">${e.status}</span></td>
         <td>
           <div class="action-btns">
-            <button class="btn btn-sm btn-secondary" onclick="viewShippingBill(${b.id})" title="View"><i class="fas fa-eye"></i></button>
-            ${b.status === "DRAFT" ? `<button class="btn btn-sm btn-success" onclick="approveShippingBill(${b.id})" title="Approve"><i class="fas fa-check"></i></button>` : ""}
-            <button class="btn btn-sm btn-secondary" onclick="printShippingBill(${b.id})" title="Print"><i class="fas fa-print"></i></button>
-            ${b.status === "DRAFT" ? `<button class="btn btn-sm btn-danger" onclick="deleteShippingBill(${b.id})" title="Delete"><i class="fas fa-trash"></i></button>` : ""}
+            ${(e.status === 'DRAFT' && canApprove) ? `<button class="action-btn success" onclick="approveShippingBill(${e.id})" title="Approve"><i class="fas fa-check"></i></button>` : ''}
+            ${e.status === 'DRAFT' ? `<button class="action-btn primary" onclick="window.location.href='shipping-bill-entry.html?id=${e.id}'" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
+            <button class="action-btn info" onclick="viewShippingBill(${e.id})" title="View Details"><i class="fas fa-eye"></i></button>
+            <button class="action-btn secondary" onclick="printShippingBill(${e.id})" title="Print"><i class="fas fa-print"></i></button>
+            ${e.status === 'DRAFT' ? `<button class="action-btn danger" onclick="deleteShippingBill(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
           </div>
         </td>
-      </tr>`, 10);
+      </tr>
+    `, 10);
   } catch (error) {
     console.error("Error loading shipping bills:", error);
   }
 }
 
 function getStatusBadge(status) {
-  const badges = {
-    DRAFT: '<span class="badge badge-warning">Draft</span>',
-    APPROVED: '<span class="badge badge-success">Approved</span>',
-    DISPATCHED: '<span class="badge badge-info">Dispatched</span>',
+  const classes = {
+    DRAFT: 'badge-warning',
+    APPROVED: 'badge-success',
+    DISPATCHED: 'badge-info',
   };
-  return badges[status] || `<span class="badge">${status}</span>`;
+  return classes[status] || '';
 }
 
 async function initShippingBillEntry() {
@@ -1797,17 +2078,22 @@ async function initShippingBillEntry() {
     .split("T")[0];
 
   // Listen to Consignment Change to dynamically fetch stock
-  document.getElementById("sb-consignment").addEventListener('change', async (e) => {
-    const consignment_id = e.target.value;
-    if (consignment_id) {
-        sbAvailableItems = await apiCall("/outward/available/items?consignment_id=" + consignment_id);
-    } else {
-        sbAvailableItems = [];
-    }
-    // Reset selected items when airline changes
-    sbSelectedItems = [{ inward_item_id: null, description: "", qty: "", available_qty: "", bond_expiry: "", bond_no: "", unit_value: "", value_amount: 0, unit_duty: "", duty_amount: 0 }];
-    renderSBItems();
-  });
+  const consignmentSelect = document.getElementById("sb-consignment");
+  if (consignmentSelect) {
+    consignmentSelect.addEventListener('change', async (e) => {
+      const consignment_id = e.target.value;
+      const user = getAuthUser();
+      const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+      if (consignment_id) {
+          sbAvailableItems = await apiCall(`/outward/available/items?consignment_id=${consignment_id}${branchId ? `&branch_id=${branchId}` : ''}`);
+      } else {
+          sbAvailableItems = [];
+      }
+      // Reset selected items when airline changes
+      sbSelectedItems = [{ inward_item_id: null, description: "", qty: "", available_qty: "", bond_expiry: "", bond_no: "", unit_value: "", value_amount: 0, unit_duty: "", duty_amount: 0 }];
+      renderSBItems();
+    });
+  }
 
   // Initialize with no items available until an airline is selected
   sbAvailableItems = [];
@@ -1863,9 +2149,11 @@ let returnInwardEntries = [];
 let returnInwardItems = [];
 
 async function loadReturnStockPage() {
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
   try {
-    const entries = await apiCall('/return-stock');
-    paginateTable('return-stock-table', entries, (e) => `
+    const data = await apiCall(`/return-stock${branchId ? `?branch_id=${branchId}` : ''}`);
+    paginateTable('return-stock-table', data, (e) => `
       <tr>
         <td>${formatDate(e.return_date)}</td>
         <td><strong>${e.bond_no || '-'}</strong></td>
@@ -1882,7 +2170,9 @@ async function loadReturnStockPage() {
 
 async function openReturnStockModal() {
   try {
-    const records = await apiCall('/inward');
+    const user = getAuthUser();
+    const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+    const records = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
     returnInwardEntries = records.filter(e => e.available_stock > 0);
     
     const bondOptions = '<option value="">Select Bond...</option>' + 
@@ -2036,7 +2326,6 @@ function renderSBItems() {
         const rowAvailable = sbAvailableItems.filter(
             (i) => (!addedIds.has(i.inward_item_id) || (item.inward_item_id && i.inward_item_id === item.inward_item_id)) 
                    && i.available_qty > 0
-                   && (!getLastExpiry(i) || getLastExpiry(i) >= today)
         );
 
         return `
@@ -2193,6 +2482,7 @@ async function saveShippingBill() {
       unit_duty: i.unit_duty,
       duty_amount: i.duty_amount,
     })),
+    branch_id: getAuthUser().branch_id
   };
 
   try {
@@ -2207,7 +2497,12 @@ async function saveShippingBill() {
 async function approveShippingBill(id) {
   if (!confirm("Approve this shipping bill? This will also release stock and create an outward entry.")) return;
   try {
-    const result = await apiCall(`/shipping-bills/${id}/approve`, "PUT", { approved_by: "Manager" });
+    const user = getAuthUser();
+    const result = await apiCall(`/shipping-bills/${id}/approve`, "PUT", { 
+        approved_by: user.name,
+        user_role: user.role,
+        user_branch_id: user.branch_id
+    });
     showToast(result.message || "Approved!", "success");
     await loadShippingBillsListPage();
   } catch (error) {
@@ -2556,18 +2851,19 @@ async function loadConsignmentStockReport() {
 
 async function loadDetailedStockReport() {
   const params = new URLSearchParams();
+  const bondNo = document.getElementById("stock-filter-bond")?.value;
+  const consignmentId = document.getElementById("stock-filter-consignment")?.value;
+  if (bondNo) params.append("bond_no", bondNo);
+  if (consignmentId) params.append("consignment_id", consignmentId);
+  const user = getAuthUser();
+  if (user.role !== 'SUPER_ADMIN' && user.branch_id) params.append("branch_id", user.branch_id);
   
-  const consignmentEl = document.getElementById("stock-filter-consignment");
-  const consignmentId = consignmentEl ? consignmentEl.value : null;
   const fromDate = document.getElementById("stock-filter-from")?.value;
   const toDate = document.getElementById("stock-filter-to")?.value;
-  const bondNo = document.getElementById("stock-filter-bond")?.value;
   const expiryDate = document.getElementById("stock-filter-expiry")?.value;
 
-  if (consignmentId) params.append('consignment_id', consignmentId);
   if (fromDate) params.append('from_date', fromDate);
   if (toDate) params.append('to_date', toDate);
-  if (bondNo) params.append('bond_no', bondNo);
   if (expiryDate) params.append('expiry_date', expiryDate);
 
   // Load consignments for filter if not yet done
@@ -2589,7 +2885,9 @@ async function loadDetailedStockReport() {
   const bondEl = document.getElementById("stock-filter-bond");
   if (bondEl && bondEl.options.length <= 1) {
     try {
-      const bondNumbers = await apiCall("/reports/unique-bond-numbers");
+      const user = getAuthUser();
+      const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+      const bondNumbers = await apiCall(`/reports/unique-bond-numbers${branchId ? `?branch_id=${branchId}` : ''}`);
       bondEl.innerHTML = '<option value="">All Bond Numbers</option>' + 
         bondNumbers.map(b => `<option value="${b}" ${bondNo == b ? "selected" : ""}>${b}</option>`).join("");
     } catch (err) {
@@ -2750,9 +3048,8 @@ function openItemSelectionModal(mode, callback) {
     
     items = sbAvailableItems.filter(i => {
        const isAvailable = i.available_qty > 0;
-       const isNotExpired = (!getLastExpiry(i) || getLastExpiry(i) >= today);
        const matchesConsignment = !selectedConsignmentId || i.consignment_id == selectedConsignmentId;
-       return isAvailable && isNotExpired && matchesConsignment;
+       return isAvailable && matchesConsignment;
     });
   } else if (mode === 'MASTER') {
     title = 'Select Item Master (Inward Entry)';
@@ -2891,10 +3188,15 @@ async function initInwardEntry() {
 
   if (consignments.length === 0) consignments = await apiCall("/consignments");
 
-  // Populate Airline Dropdown (only AIRLINE type)
   const airlines = consignments.filter(c => c.type === 'AIRLINE');
   const airlineSelect = document.getElementById("inw-airline-code");
   if (airlineSelect) {
+    // Destroy any existing TomSelect so we can repopulate the raw <select>
+    if (airlineSelect.tomselect) airlineSelect.tomselect.destroy();
+    // Temporarily prevent global DOMContentLoaded handler from initializing TomSelect
+    // before we've set the correct value
+    airlineSelect.classList.remove('searchable');
+    
     airlineSelect.innerHTML =
       '<option value="">Select Airline</option>' +
       airlines
@@ -2902,16 +3204,20 @@ async function initInwardEntry() {
         .join("");
   }
   
-  // Populate Ship Dropdown (only SHIP type)
   const ships = consignments.filter(c => c.type === 'SHIP');
   const shipSelect = document.getElementById("inw-ship");
   if (shipSelect) {
+    if (shipSelect.tomselect) shipSelect.tomselect.destroy();
+    shipSelect.classList.remove('searchable');
+    
     shipSelect.innerHTML =
       '<option value="">Select Ship</option>' +
       ships
         .map((c) => `<option value="${c.id}">${c.name}</option>`)
         .join("");
   }
+
+  // DO NOT call initSearchableSelects() here — we set native values first, then init TomSelect at the end
 
   // Reset or Load Form
   if (editId) {
@@ -2922,40 +3228,60 @@ async function initInwardEntry() {
 
     try {
       const entry = await apiCall(`/inward/${editId}`);
+      console.log("Loading entry for edit:", entry);
+
+      // Helper to format date for input[type=date]
+      const toDateVal = (d) => {
+          if (!d) return "";
+          return d.split('T')[0];
+      };
+
       // Populate fields
       document.getElementById("inw-be-no").value = entry.be_no || "";
-      document.getElementById("inw-be-date").value = entry.be_date || "";
+      setFormDate("inw-be-date", toDateVal(entry.be_date));
       document.getElementById("inw-customs-station").value = entry.customs_station || "COK";
       document.getElementById("inw-bond-no").value = entry.bond_no || "";
-      document.getElementById("inw-bond-date").value = entry.bond_date || "";
-      document.getElementById("inw-sec60-date").value = entry.date_of_order_section_60 || "";
+      setFormDate("inw-bond-date", toDateVal(entry.bond_date));
+      setFormDate("inw-sec60-date", toDateVal(entry.date_of_order_section_60));
       document.getElementById("inw-import-sb-no").value = entry.shipping_bill_no || "";
       document.getElementById("inw-import-inv-sl").value = entry.sl_no_import_invoice || "";
-      document.getElementById("inw-receipt-date").value = entry.date_of_receipt || "";
+      setFormDate("inw-receipt-date", toDateVal(entry.date_of_receipt));
       document.getElementById("inw-wh-code").value = entry.warehouse_code || "";
-      document.getElementById("inw-duty-rate").value = entry.duty_rate || ""; // Note: ID reused?
-      // Wait, there are two duty_rate inputs in HTML? No, one in grid 3 and one in bonding?
-      // Let's check IDs. inw-duty-rate appears in previous generate-pages view.
+      document.getElementById("inw-wh-code").readOnly = true;
+      document.getElementById("inw-duty-rate").value = entry.duty_rate || "";
+      
+      const bondDutyRateEl = document.getElementById("inw-bond-duty-rate");
+      if (bondDutyRateEl) bondDutyRateEl.value = entry.duty_rate || "";
       
       // Transport Mode
       updateTransportMode(entry.mode_of_receipt || 'AIRLINE');
-      if (entry.mode_of_receipt === 'AIRLINE') {
-         document.getElementById("inw-airline-code").value = entry.consignment_id || "";
-         updateAirlineName();
-      } else if (entry.mode_of_receipt === 'SHIP') {
-         document.getElementById("inw-ship").value = entry.consignment_id || "";
-      } else if (entry.mode_of_receipt === 'ROAD') {
-         document.getElementById("inw-transport-reg").value = entry.transport_reg_no || "";
+
+      // Set NATIVE <select> value BEFORE TomSelect initializes
+      // TomSelect reads the native select's selected option on init
+      const consignmentIdStr = entry.consignment_id ? String(entry.consignment_id) : "";
+      const mode = entry.mode_of_receipt || 'AIRLINE';
+
+      if (mode === 'AIRLINE') {
+         if (airlineSelect) airlineSelect.value = consignmentIdStr;
+         // Load flight numbers for the saved airline and pre-select the saved flight
+         if (consignmentIdStr) {
+           await loadFlightNumbers(consignmentIdStr, entry.flight_no || "");
+         }
+      } else if (mode === 'SHIP') {
+         if (shipSelect) shipSelect.value = consignmentIdStr;
+      } else if (mode === 'ROAD') {
+         const roadEl = document.getElementById("inw-transport-reg");
+         if (roadEl) roadEl.value = entry.transport_reg_no || "";
       }
 
-      document.getElementById("inw-bond-start").value = entry.initial_bonding_date || "";
-      document.getElementById("inw-bond-expiry").value = entry.initial_bonding_expiry || "";
+      setFormDate("inw-bond-start", toDateVal(entry.initial_bonding_date));
+      setFormDate("inw-bond-expiry", toDateVal(entry.initial_bonding_expiry));
       document.getElementById("inw-bank-guarantee").value = entry.bank_guarantee || "";
-      document.getElementById("inw-ext-exp1").value = entry.extended_bonding_expiry1 || "";
-      document.getElementById("inw-ext-exp2").value = entry.extended_bonding_expiry2 || "";
-      document.getElementById("inw-ext-exp3").value = entry.extended_bonding_expiry3 || "";
+      setFormDate("inw-ext-exp1", toDateVal(entry.extended_bonding_expiry1));
+      setFormDate("inw-ext-exp2", toDateVal(entry.extended_bonding_expiry2));
+      setFormDate("inw-ext-exp3", toDateVal(entry.extended_bonding_expiry3));
       document.getElementById("inw-value-rate").value = entry.value_rate || "";
-    
+      
       inwardItemsTemp = entry.items || [];
       renderInwardBillingTable();
     } catch (e) {
@@ -2963,19 +3289,37 @@ async function initInwardEntry() {
       showToast("Error loading entry", "error");
     }
   } else {
+    // New entry - set defaults
+    const user = getAuthUser();
+    const whCodeInput = document.getElementById("inw-wh-code");
+    if (whCodeInput) {
+        whCodeInput.value = user.branch_code || "COK15173";
+        whCodeInput.readOnly = true;
+    }
+
     const form = document.getElementById("inward-billing-form");
     if (form && typeof form.reset === "function") form.reset();
-    document.getElementById("inw-receipt-date").value = new Date()
-      .toISOString()
-      .split("T")[0];
+    setFormDate("inw-receipt-date", new Date().toISOString().split("T")[0]);
     inwardItemsTemp = [];
     addInwardItemPage();
   }
-  // Set default transport mode to AIRLINE
-  updateTransportMode('AIRLINE');
+  if (!editId) {
+    // Set default transport mode to AIRLINE only for new entries
+    updateTransportMode('AIRLINE');
+  }
 
-  // Explicitly initialize TomSelect on any newly populated dropdowns
-  setTimeout(initSearchableSelects, 100);
+  // Restore searchable class and NOW initialize TomSelect
+  // TomSelect will pick up the pre-set native select values
+  if (airlineSelect) airlineSelect.classList.add('searchable');
+  if (shipSelect) shipSelect.classList.add('searchable');
+  initSearchableSelects();
+
+  // Update airline name display after TomSelect is ready
+  if (editId) {
+    updateAirlineName();
+  }
+
+
 
   // Setup full-form keyboard navigation (Enter = Tab to next)
   setupFormKeyboardNav("inward-billing-form");
@@ -3003,6 +3347,10 @@ function updateTransportMode(mode) {
   } else if (mode === "ROAD") {
     if(roadSelection) roadSelection.style.display = "block";
   }
+
+  // Select the correct radio button to reflect the current mode
+  const radio = document.querySelector(`input[name="transport-mode"][value="${mode}"]`);
+  if (radio) radio.checked = true;
 }
 
 
@@ -3012,13 +3360,105 @@ function updateAirlineName() {
   const airlineName = document.getElementById("inw-airline-name");
   const airlineNameDisplay = document.getElementById("airline-name-display");
   
-  if (airlineCode && airlineCode.value) {
-    const selected = airlineCode.options[airlineCode.selectedIndex];
-    airlineName.value = selected.getAttribute('data-name') || '';
-    if (airlineNameDisplay) airlineNameDisplay.style.display = 'block';
+  const airlineSelectValue = (airlineCode && airlineCode.tomselect) ? airlineCode.tomselect.getValue() : (airlineCode ? airlineCode.value : null);
+
+  if (airlineCode && airlineSelectValue) {
+    let selected = airlineCode.options[airlineCode.selectedIndex];
+    if (!selected || selected.value !== airlineSelectValue) {
+        selected = Array.from(airlineCode.options).find(opt => opt.value == airlineSelectValue);
+    }
+    
+    if (selected) {
+        airlineName.value = selected.getAttribute('data-name') || '';
+        if (airlineNameDisplay) airlineNameDisplay.style.display = 'block';
+    }
+    
+    // Load flight numbers ONLY if the selected airline ACTUALLY changed (prevents race condition during edit prepopulation)
+    const flightSelect = document.getElementById("inw-flight-no");
+    if (flightSelect && flightSelect.getAttribute('data-airline') !== String(airlineSelectValue)) {
+      loadFlightNumbers(airlineSelectValue);
+    }
   } else {
     airlineName.value = '';
     if (airlineNameDisplay) airlineNameDisplay.style.display = 'none';
+    
+    // Clear flight dropdown only if it isn't already empty
+    const flightSelect = document.getElementById("inw-flight-no");
+    if (flightSelect && flightSelect.getAttribute('data-airline') !== 'null') {
+      loadFlightNumbers(null);
+    }
+  }
+}
+
+// Load flight numbers for a given airline (consignment_id)
+async function loadFlightNumbers(consignmentId, presetValue) {
+  const flightSelect = document.getElementById("inw-flight-no");
+  if (!flightSelect) return;
+  flightSelect.setAttribute('data-airline', String(consignmentId));
+
+  // Destroy existing TomSelect if present
+  if (flightSelect.tomselect) flightSelect.tomselect.destroy();
+  flightSelect.classList.remove('searchable');
+
+  if (!consignmentId) {
+    flightSelect.innerHTML = '<option value="">Select Flight</option>';
+    flightSelect.classList.add('searchable');
+    initSearchableSelects();
+    return;
+  }
+
+  try {
+    const flights = await apiCall(`/consignments/flights/list?consignment_id=${consignmentId}`);
+    
+    let hasPreset = false;
+    let optionsHtml = '<option value="">Select Flight</option>' +
+      flights.map(f => {
+         if (presetValue && f.flight_no === presetValue) hasPreset = true;
+         return `<option value="${f.flight_no}">${f.flight_no}</option>`;
+      }).join('');
+      
+    if (presetValue && !hasPreset) {
+      optionsHtml += `<option value="${presetValue}">${presetValue}</option>`;
+    }
+    
+    flightSelect.innerHTML = optionsHtml;
+    
+    // Pre-select value if provided
+    if (presetValue) {
+      flightSelect.value = presetValue;
+    }
+  } catch (e) {
+    console.error('Error loading flights:', e);
+    flightSelect.innerHTML = '<option value="">Select Flight</option>';
+  }
+
+  flightSelect.classList.add('searchable');
+  initSearchableSelects();
+}
+
+// Add new flight number for the currently selected airline
+async function addNewFlightNumber() {
+  const airlineCode = document.getElementById("inw-airline-code");
+  const consignmentId = (airlineCode && airlineCode.tomselect) ? airlineCode.tomselect.getValue() : (airlineCode ? airlineCode.value : null);
+
+  if (!consignmentId) {
+    showToast("Please select an airline first", "error");
+    return;
+  }
+
+  const flightNo = prompt("Enter new flight number (e.g. AI-902):");
+  if (!flightNo || !flightNo.trim()) return;
+
+  try {
+    await apiCall('/consignments/flights', 'POST', {
+      consignment_id: consignmentId,
+      flight_no: flightNo.trim()
+    });
+    showToast("Flight number added successfully");
+    // Reload flights and select the new one
+    await loadFlightNumbers(consignmentId, flightNo.trim());
+  } catch (e) {
+    showToast(e.message || "Error adding flight number", "error");
   }
 }
 
@@ -3125,11 +3565,12 @@ function renderInwardBillingTable() {
             <td><input type="text" class="form-control" value="${item.unit || "NOS"}" onchange="updateInwardItemPage(${idx}, 'unit', this.value)"></td>
             <td><input type="text" class="form-control" value="${item.hsn_code || ""}" onchange="updateInwardItemPage(${idx}, 'hsn_code', this.value)"></td>
             <td><input type="text" class="form-control" value="${item.duty_percent || 0}" placeholder="%" onchange="updateInwardItemPage(${idx}, 'duty_percent', this.value)"></td>
-            <td><input type="number" class="form-control" value="${item.qty_adviced || 0}" onchange="updateInwardItemPage(${idx}, 'qty_adviced', this.value)"></td>
-            <td><input type="date" class="form-control" value="${item.shelf_life_date || ""}" onchange="updateInwardItemPage(${idx}, 'shelf_life_date', this.value)"></td>
-            <td><input type="number" class="form-control" value="${item.qty || 0}" min="0" onchange="updateInwardItemPage(${idx}, 'qty', this.value)"></td>
-            <td><input type="number" class="form-control" value="${item.value || 0}" step="0.01" onchange="updateInwardItemPage(${idx}, 'value', this.value)"></td>
-            <td><input type="number" class="form-control" value="${item.duty || 0}" step="0.01" onchange="updateInwardItemPage(${idx}, 'duty', this.value)"></td>
+            <td><input type="number" step="0.01" class="form-control" value="${item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty', this.value); renderInwardBillingTable();"></td>
+            <td><input type="date" class="form-control" value="${item.shelf_life_date ? item.shelf_life_date.split('T')[0] : ''}" onchange="updateInwardItemPage(${idx}, 'shelf_life_date', this.value)"></td>
+            <td><input type="number" step="0.01" class="form-control" value="${item.qty_received || item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty_received', this.value)"></td>
+            <td><input type="number" step="0.01" class="form-control" value="${item.value || 0}" onchange="updateInwardItemPage(${idx}, 'value', this.value); renderInwardBillingTable();"></td>
+            <td><input type="number" step="0.01" class="form-control" value="${item.duty || 0}" onchange="updateInwardItemPage(${idx}, 'duty', this.value); renderInwardBillingTable();"></td>
+            <td><input type="text" class="form-control" value="${formatCurrency((parseFloat(item.value) || 0) + (parseFloat(item.duty) || 0))}" readonly></td>
             <td><button class="action-btn danger" onclick="removeInwardItemPage(${idx})"><i class="fas fa-trash"></i></button></td>
         </tr>
     `,
@@ -3318,13 +3759,15 @@ async function saveInwardPage() {
   const transportModeEl = document.querySelector('input[name="transport-mode"]:checked');
   const transportMode = transportModeEl ? transportModeEl.value : 'AIRLINE';
   
-  // Inward is always tied to an airline consignment first
-  let consignment_id = document.getElementById("inw-airline-code").value || null;
+  // Inward is tied to an airline consignment first
+  const airlineSelect = document.getElementById("inw-airline-code");
+  let consignment_id = (airlineSelect && airlineSelect.tomselect) ? airlineSelect.tomselect.getValue() : (airlineSelect ? airlineSelect.value : null);
+  if (!consignment_id || consignment_id === "") consignment_id = null;
   let transport_reg_no = null;
   
   if (transportMode === 'SHIP') {
-    // If local transport is SHIP, we might also want to capture the ship name, but we definitely need the primary airline consignment
-    transport_reg_no = document.getElementById("inw-ship").value || null;
+    const shipSelect = document.getElementById("inw-ship");
+    transport_reg_no = (shipSelect && shipSelect.tomselect) ? shipSelect.tomselect.getValue() : (shipSelect ? shipSelect.value : null);
   } else if (transportMode === 'ROAD') {
     transport_reg_no = document.getElementById("inw-transport-reg").value || null;
   }
@@ -3334,15 +3777,17 @@ async function saveInwardPage() {
     be_date: document.getElementById("inw-be-date").value,
     bond_no: document.getElementById("inw-bond-no").value,
     bond_date: document.getElementById("inw-bond-date").value,
+    shipping_bill_no: document.getElementById("inw-import-sb-no").value || null,
+    sl_no_import_invoice: document.getElementById("inw-import-inv-sl").value || null,
     date_of_receipt: document.getElementById("inw-receipt-date").value,
+    mode_of_receipt: transportMode,
     consignment_id: consignment_id,
-    flight_no: document.getElementById("inw-flight-no") ? document.getElementById("inw-flight-no").value : null,
+    flight_no: (() => { const f = document.getElementById("inw-flight-no"); return f ? ((f.tomselect) ? f.tomselect.getValue() : f.value) : null; })(),
     transport_reg_no: transport_reg_no,
     warehouse_code: document.getElementById("inw-wh-code").value,
     customs_station: document.getElementById("inw-customs-station").value,
     date_of_order_section_60: document.getElementById("inw-sec60-date").value,
-    duty_rate: document.getElementById("inw-duty-rate").value,
-    // Fix: Map bonding expiry fields correctly
+    duty_rate: document.getElementById("inw-duty-rate").value || document.getElementById("inw-bond-duty-rate").value || null,
     initial_bonding_date: document.getElementById("inw-bond-start").value || null,
     initial_bonding_expiry: document.getElementById("inw-bond-expiry").value || null,
     extended_bonding_expiry1: document.getElementById("inw-ext-exp1").value || null,
@@ -3351,6 +3796,7 @@ async function saveInwardPage() {
     bank_guarantee: document.getElementById("inw-bank-guarantee").value || null,
     value_rate: document.getElementById("inw-value-rate").value || null,
     items: inwardItemsTemp,
+    branch_id: getAuthUser().branch_id || null
   };
 
   if (!data.be_no || !data.bond_no || data.items.length === 0) {
@@ -3359,6 +3805,7 @@ async function saveInwardPage() {
   }
 
   try {
+    console.log("Saving Inward Data:", JSON.stringify(data, null, 2));
     if (currentInwardId) {
        await apiCall(`/inward/${currentInwardId}`, "PUT", data);
        showToast("Inward Entry Updated");
@@ -3385,6 +3832,7 @@ async function saveOutwardPage() {
     shipping_bill_no: document.getElementById("out-sb-no").value,
     shipping_bill_date: document.getElementById("out-sb-date").value,
     items: outwardItemsTemp,
+    branch_id: getAuthUser().branch_id || null
   };
 
   if (!data.dispatch_date || !data.consignment_id || data.items.length === 0) {
@@ -3419,12 +3867,17 @@ async function loadAirlineMastersPage() {
         <td>${a.code || ''}</td>
         <td>${a.address || ''}</td>
         <td>
-          <button class="action-btn" onclick="editAirline(${a.id})" title="Edit">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button class="action-btn danger" onclick="deleteAirline(${a.id})" title="Delete">
-            <i class="fas fa-trash"></i>
-          </button>
+          <div class="action-btns">
+            <button class="action-btn" onclick="editAirline(${a.id})" title="Edit">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="action-btn danger" onclick="deleteAirline(${a.id})" title="Delete">
+              <i class="fas fa-trash"></i>
+            </button>
+            <button class="action-btn info" style="background-color: var(--primary); color: white; border: none; font-size: 1rem; width: 34px; height: 34px;" onclick="manageFlights(${a.id}, '${a.name}')" title="Manage Flights">
+              <i class="fas fa-plane"></i>
+            </button>
+          </div>
         </td>
       </tr>
     `, 6);
@@ -3510,6 +3963,101 @@ async function deleteAirline(id) {
   }
 }
 
+// ============================================
+// Manage Flights within Airline Masters
+// ============================================
+
+async function manageFlights(airlineId, airlineName) {
+  try {
+    const res = await fetch(`/api/consignments/flights/list?consignment_id=${airlineId}`);
+    const flights = await res.json();
+    
+    // Build the modal body
+    const title = `Manage Flights: ${airlineName}`;
+    
+    let flightRows = flights.map(f => `
+      <tr>
+        <td>${f.flight_no}</td>
+        <td style="text-align: right;">
+          <button class="action-btn danger btn-sm" onclick="deleteFlightNumber(${f.id}, ${airlineId}, '${airlineName}')" title="Delete Flight">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    if (flights.length === 0) {
+      flightRows = '<tr><td colspan="2" class="empty-state">No flights added for this airline.</td></tr>';
+    }
+
+    const body = `
+      <div class="form-group" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <input type="text" class="form-control" id="new-flight-input" placeholder="Enter new flight (e.g. AI-902)" style="flex: 1;" />
+        <button class="btn btn-primary" onclick="addNewFlightFromModal(${airlineId}, '${airlineName}')">
+          <i class="fas fa-plus"></i> Add
+        </button>
+      </div>
+      <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+        <table class="table" style="margin-bottom: 0;">
+          <thead style="position: sticky; top: 0; background: var(--bg-color); z-index: 1;">
+            <tr>
+              <th>Flight No</th>
+              <th style="text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${flightRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+    
+    const footer = `<button class="btn btn-secondary" onclick="closeModal()">Close</button>`;
+    
+    openModal(title, body, footer);
+  } catch (e) {
+    showToast('Error loading flights', 'error');
+    console.error(e);
+  }
+}
+
+async function addNewFlightFromModal(airlineId, airlineName) {
+  const flightInput = document.getElementById('new-flight-input');
+  if (!flightInput) return;
+  const flightNo = flightInput.value.trim();
+  
+  if (!flightNo) {
+    showToast('Please enter a flight number', 'error');
+    return;
+  }
+
+  try {
+    await apiCall('/consignments/flights', 'POST', {
+      consignment_id: airlineId,
+      flight_no: flightNo
+    });
+    showToast("Flight number added successfully");
+    // Reload the modal to show the new list
+    manageFlights(airlineId, airlineName);
+  } catch (e) {
+    showToast(e.message || "Error adding flight number", "error");
+  }
+}
+
+async function deleteFlightNumber(flightId, airlineId, airlineName) {
+  if (!confirm('Are you sure you want to delete this flight number?')) return;
+  
+  try {
+    await apiCall(`/consignments/flights/${flightId}`, 'DELETE');
+    showToast('Flight number deleted', 'success');
+    // Reload the modal to reflect the deletion
+    manageFlights(airlineId, airlineName);
+  } catch (e) {
+    showToast(e.message || "Error deleting flight number", "error");
+  }
+}
+
+
 // Global exports
 window.openInwardModal = openInwardModal;
 window.openOutwardModal = openOutwardModal;
@@ -3530,10 +4078,10 @@ function downloadFormAPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
   const opt = {
-    margin:       [5, 5, 5, 5],
+    margin:       [10, 10, 10, 10],
     filename:     `Form-A_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 1.5, useCORS: true, windowWidth: 1600 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
@@ -3553,10 +4101,10 @@ function downloadFormBPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
   const opt = {
-    margin:       [5, 5, 5, 5],
+    margin:       [10, 10, 10, 10],
     filename:     `Form-B_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 1.5, useCORS: true, windowWidth: 1600 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
@@ -3623,6 +4171,9 @@ window.openAirlineModal = openAirlineModal;
 window.saveAirline = saveAirline;
 window.editAirline = editAirline;
 window.deleteAirline = deleteAirline;
+window.manageFlights = manageFlights;
+window.addNewFlightFromModal = addNewFlightFromModal;
+window.deleteFlightNumber = deleteFlightNumber;
 // Shipping Bill CRUD + Workflow
 window.loadShippingBillsListPage = loadShippingBillsListPage;
 window.initShippingBillEntry = initShippingBillEntry;
@@ -3638,3 +4189,453 @@ window.approveShippingBill = approveShippingBill;
 window.deleteShippingBill = deleteShippingBill;
 window.viewShippingBill = viewShippingBill;
 window.printShippingBill = printShippingBill;
+
+// ============================================
+// User & Branch Management (Admin Only)
+// ========================
+// ============= User & Branch Management (Admin Only) =============
+
+async function loadUsersPage() {
+    try {
+        const usersList = await apiCall('/users');
+        paginateTable('users-table', usersList, (u) => `
+            <tr>
+                <td>${u.id}</td>
+                <td>${u.username}</td>
+                <td>${u.full_name || "-"}</td>
+                <td><span class="badge ${u.role === 'SUPER_ADMIN' ? 'badge-purple' : 'badge-info'}">${u.role}</span></td>
+                <td>${u.branch_name || "Central / All"}</td>
+                <td><span class="status-indicator ${u.status === 'ACTIVE' ? 'status-active' : 'status-inactive'}"></span> ${u.status}</td>
+                <td>
+                    <div class="action-btns">
+                        <button class="action-btn" onclick="openUserModal(${JSON.stringify(u).replace(/"/g, '&quot;')})" title="Edit"><i class="fas fa-edit"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `, 7);
+    } catch (error) {
+        console.error("Users load error:", error);
+    }
+}
+
+async function openUserModal(user = null) {
+    const branches = await apiCall('/branches');
+    const isEdit = user !== null;
+    const body = `
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label class="form-label">Username *</label>
+                <input type="text" class="form-control" id="user-username" value="${user?.username || ""}" ${isEdit ? 'disabled' : ''}>
+            </div>
+            <div class="form-group">
+                <label class="form-label">${isEdit ? 'New Password (leave blank to keep)' : 'Password *'}</label>
+                <input type="password" class="form-control" id="user-password">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input type="text" class="form-control" id="user-fullname" value="${user?.full_name || ""}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Role</label>
+                <select class="form-control" id="user-role">
+                    <option value="STAFF" ${user?.role === 'STAFF' ? 'selected' : ''}>Staff</option>
+                    <option value="ADMIN" ${user?.role === 'ADMIN' ? 'selected' : ''}>Admin</option>
+                    <option value="SUPER_ADMIN" ${user?.role === 'SUPER_ADMIN' ? 'selected' : ''}>Super Admin</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Branch / Godown</label>
+                <select class="form-control" id="user-branch">
+                    <option value="">None / Central</option>
+                    ${branches.map(b => `<option value="${b.id}" ${user?.branch_id == b.id ? 'selected' : ''}>${b.name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Status</label>
+                <select class="form-control" id="user-status">
+                    <option value="ACTIVE" ${user?.status === 'ACTIVE' ? 'selected' : ''}>Active</option>
+                    <option value="INACTIVE" ${user?.status === 'INACTIVE' ? 'selected' : ''}>Inactive</option>
+                </select>
+            </div>
+        </div>
+    `;
+    openModal(
+        isEdit ? "Edit User" : "Add New User",
+        body,
+        `
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveUser(${user?.id || 'null'})">${isEdit ? "Update" : "Create"} User</button>
+        `
+    );
+}
+
+async function saveUser(id) {
+    const data = {
+        username: id ? null : document.getElementById('user-username').value,
+        password: document.getElementById('user-password').value,
+        full_name: document.getElementById('user-fullname').value,
+        role: document.getElementById('user-role').value,
+        branch_id: document.getElementById('user-branch').value || null,
+        status: document.getElementById('user-status').value
+    };
+    
+    try {
+        if (id) {
+            await apiCall(`/users/${id}`, "PUT", data);
+            showToast("User updated");
+        } else {
+            if (!data.password) { showToast("Password required for new users", "error"); return; }
+            await apiCall("/users", "POST", data);
+            showToast("User created");
+        }
+        closeModal();
+        loadUsersPage();
+    } catch (e) { console.error(e); }
+}
+
+async function loadBranchesPage() {
+    try {
+        const list = await apiCall('/branches');
+        paginateTable('branches-table', list, (b) => `
+            <tr>
+                <td>${b.id}</td>
+                <td>${b.name}</td>
+                <td>${b.code || "-"}</td>
+                <td>${b.address || "-"}</td>
+                <td><span class="status-indicator ${b.status === 'ACTIVE' ? 'status-active' : 'status-inactive'}"></span> ${b.status}</td>
+                <td>
+                    <div class="action-btns">
+                        <button class="action-btn" onclick="openBranchModal(${JSON.stringify(b).replace(/"/g, '&quot;')})" title="Edit"><i class="fas fa-edit"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `, 6);
+    } catch (error) { console.error(error); }
+}
+
+function openBranchModal(branch = null) {
+    const isEdit = branch !== null;
+    const body = `
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label class="form-label">Name *</label>
+                <input type="text" class="form-control" id="branch-name" value="${branch?.name || ""}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Code</label>
+                <input type="text" class="form-control" id="branch-code" value="${branch?.code || ""}">
+            </div>
+            <div class="form-group" style="grid-column: span 2">
+                <label class="form-label">Address</label>
+                <textarea class="form-control" id="branch-address" rows="2">${branch?.address || ""}</textarea>
+            </div>
+        </div>
+    `;
+    openModal(
+        isEdit ? "Edit Godown" : "Add New Godown",
+        body,
+        `
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveBranch(${branch?.id || 'null'})">${isEdit ? "Update" : "Create"}</button>
+        `
+    );
+}
+
+async function saveBranch(id) {
+    const data = {
+        name: document.getElementById('branch-name').value,
+        code: document.getElementById('branch-code').value,
+        address: document.getElementById('branch-address').value
+    };
+    try {
+        if (id) await apiCall(`/branches/${id}`, "PUT", data);
+        else await apiCall("/branches", "POST", data);
+        closeModal();
+        loadBranchesPage();
+    } catch (e) { console.error(e); }
+}
+
+// ================= Global Search =================
+
+function initGlobalSearch(searchInput) {
+    if (!searchInput) return;
+
+    // Create results dropdown if it doesn't exist
+    let dropdown = document.getElementById('search-results-dropdown');
+    if (!dropdown) {
+        dropdown = document.createElement('div');
+        dropdown.id = 'search-results-dropdown';
+        dropdown.className = 'search-results-dropdown';
+        searchInput.parentElement.style.position = 'relative';
+        searchInput.parentElement.appendChild(dropdown);
+    }
+
+    let searchTimeout;
+
+    searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        const q = e.target.value.trim();
+
+        if (q.length < 2) {
+            dropdown.classList.remove('visible');
+            return;
+        }
+
+        searchTimeout = setTimeout(async () => {
+            try {
+                const user = getAuthUser();
+                const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+                const { results } = await apiCall(`/search?q=${encodeURIComponent(q)}${branchId ? `&branch_id=${branchId}` : ''}`);
+                
+                if (results.length === 0) {
+                    dropdown.innerHTML = '<div class="search-result-item" style="cursor: default">No results found</div>';
+                } else {
+                    dropdown.innerHTML = results.map(r => `
+                        <a href="${r.url}${r.type === 'INWARD' ? `?bond_no=${encodeURIComponent(r.title)}` : r.type === 'OUTWARD' ? `?flight_no=${encodeURIComponent(r.title)}` : ''}" class="search-result-item">
+                            <div class="search-result-icon"><i class="${r.icon}"></i></div>
+                            <div class="search-result-content">
+                                <span class="search-result-title">${r.title}</span>
+                                <span class="search-result-subtitle">${r.subtitle}</span>
+                            </div>
+                            <span class="search-result-type">${r.type}</span>
+                        </a>
+                    `).join('');
+                }
+                dropdown.classList.add('visible');
+            } catch (err) {
+                console.error('Search error:', err);
+            }
+        }, 300);
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.remove('visible');
+        }
+    });
+
+    // Handle Enter key
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const firstResult = dropdown.querySelector('.search-result-item');
+            if (firstResult && firstResult.tagName === 'A') {
+                firstResult.click();
+            }
+        }
+    });
+}
+
+// ================= Navigation & Sidebar =================
+
+function initNavigation() {
+    const user = getAuthUser();
+    const sidebar = document.getElementById('sidebar-container');
+    const topBar = document.getElementById('top-bar-container');
+    
+    // Auto-populate if containers exist
+    if (sidebar) {
+        sidebar.innerHTML = `
+            <div class="sidebar-header">
+              <div class="logo-box"><i class="fas fa-plane-arrival"></i></div>
+              <div class="logo-text">CAFS <span>Inventory</span></div>
+            </div>
+            <nav class="sidebar-nav">
+              <a href="index.html" class="nav-item ${window.location.pathname.endsWith('index.html') ? 'active' : ''}"><i class="fas fa-th-large"></i> <span>Dashboard</span></a>
+              
+              ${user.role === 'SUPER_ADMIN' ? `
+                <div class="nav-label">Inventory View</div>
+                <a href="stock.html" class="nav-item ${window.location.pathname.endsWith('stock.html') ? 'active' : ''}"><i class="fas fa-boxes"></i> <span>Stock Master</span></a>
+                
+                <div class="nav-label">Master Data</div>
+                <a href="items.html" class="nav-item"><i class="fas fa-wine-bottle"></i> <span>Product Master</span></a>
+                <a href="consignments.html" class="nav-item"><i class="fas fa-building"></i> <span>Airline Master</span></a>
+                <a href="airline-masters.html" class="nav-item ${window.location.pathname.endsWith('airline-masters.html') ? 'active' : ''}"><i class="fas fa-plane"></i> <span>Airline Flights</span></a>
+                
+                <div class="nav-label">Administration</div>
+                <a href="users.html" class="nav-item ${window.location.pathname.endsWith('users.html') ? 'active' : ''}"><i class="fas fa-users-cog"></i> <span>User Management</span></a>
+                <a href="branches.html" class="nav-item ${window.location.pathname.endsWith('branches.html') ? 'active' : ''}"><i class="fas fa-warehouse"></i> <span>Godown Management</span></a>
+              ` : `
+                <div class="nav-label">Transactions</div>
+                <a href="inward.html" class="nav-item ${window.location.pathname.endsWith('inward.html') ? 'active' : ''}"><i class="fas fa-arrow-down"></i> <span>Inward Billing</span></a>
+                <a href="outward.html" class="nav-item ${window.location.pathname.endsWith('outward.html') ? 'active' : ''}"><i class="fas fa-arrow-up"></i> <span>Outward Billing</span></a>
+                <a href="stock.html" class="nav-item ${window.location.pathname.endsWith('stock.html') ? 'active' : ''}"><i class="fas fa-boxes"></i> <span>Balance Stock</span></a>
+                <a href="damaged.html" class="nav-item ${window.location.pathname.endsWith('damaged.html') ? 'active' : ''}"><i class="fas fa-heart-broken"></i> <span>Damaged Stock</span></a>
+                <a href="return-stock.html" class="nav-item ${window.location.pathname.endsWith('return-stock.html') ? 'active' : ''}"><i class="fas fa-undo"></i> <span>Return Stock</span></a>
+                
+                <div class="nav-label">Reports</div>
+                <a href="form-a.html" class="nav-item"><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a>
+                <a href="form-b.html" class="nav-item"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
+                <a href="detailed-stock.html" class="nav-item"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
+                <a href="shipping-bill.html" class="nav-item"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
+
+                <div class="nav-label">Master Data</div>
+                <a href="items.html" class="nav-item"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
+                <a href="consignments.html" class="nav-item"><i class="fas fa-building"></i> <span>Consignments</span></a>
+                <a href="airline-masters.html" class="nav-item ${window.location.pathname.endsWith('airline-masters.html') ? 'active' : ''}"><i class="fas fa-plane"></i> <span>Airline Masters</span></a>
+              `}
+            </nav>
+            <div class="sidebar-footer">
+              <div class="user-profile">
+                <div class="user-avatar">${(user.username || 'GU').substring(0,2).toUpperCase()}</div>
+                <div class="user-info">
+                  <div class="user-name">${user.name || user.username || 'Guest'}</div>
+                  <div class="user-role">${user.branch_name || user.role || ''}</div>
+                </div>
+                <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
+              </div>
+            </div>
+        `;
+    }
+
+    if (topBar) {
+        topBar.innerHTML = `
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search bond no, BE no, flight..." id="global-search" />
+          </div>
+          <div class="top-actions">
+            ${user.role !== 'SUPER_ADMIN' ? `
+              <button class="btn btn-primary" onclick="window.location.href='inward-entry.html'">
+                <i class="fas fa-plus"></i> New Inward
+              </button>
+              <button class="btn btn-secondary" onclick="window.location.href='outward-entry.html'">
+                <i class="fas fa-plus"></i> New Outward
+              </button>
+            ` : ''}
+            <div class="divider"></div>
+            <button class="icon-btn" title="Refresh" onclick="window.location.reload()">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+          </div>
+        `;
+
+        // Initialize advanced Global Search
+        const searchInput = document.getElementById("global-search");
+        if (searchInput) initGlobalSearch(searchInput);
+    }
+}
+
+// Super Admin Tools - Auto Login / User Swapper
+async function renderSuperAdminTools() {
+    const container = document.getElementById("super-admin-tools");
+    const userList = document.getElementById("auto-login-user-list");
+    if (!container || !userList) return;
+
+    container.style.display = "block";
+    
+    // Add styles if not present
+    if (!document.getElementById("super-admin-styles")) {
+        const style = document.createElement("style");
+        style.id = "super-admin-styles";
+        style.innerHTML = `
+            .auto-login-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 1rem;
+                margin-top: 1rem;
+            }
+            .user-switch-btn {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                padding: 1rem;
+                border-radius: 10px;
+                cursor: pointer;
+                text-align: left;
+                transition: all 0.2s;
+                display: flex;
+                flex-direction: column;
+                position: relative;
+                overflow: hidden;
+            }
+            .user-switch-btn:hover {
+                background: white;
+                border-color: var(--accent-blue);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+                transform: translateY(-2px);
+            }
+            .user-switch-btn .u-name {
+                font-weight: 700;
+                font-size: 1rem;
+                color: #1e293b;
+                margin-bottom: 0.25rem;
+            }
+            .user-switch-btn .u-role {
+                font-size: 0.75rem;
+                color: #64748b;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .user-switch-btn .u-branch {
+                margin-top: 0.5rem;
+                font-size: 0.8rem;
+                color: var(--accent-blue);
+                font-weight: 500;
+            }
+            .user-switch-btn::after {
+                content: '\\f0e2';
+                font-family: 'Font Awesome 5 Free';
+                font-weight: 900;
+                position: absolute;
+                right: -10px;
+                bottom: -10px;
+                font-size: 2rem;
+                opacity: 0.05;
+                transition: all 0.2s;
+            }
+            .user-switch-btn:hover::after {
+                right: 5px;
+                bottom: 5px;
+                opacity: 0.1;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    try {
+        const users = await apiCall('/auth/users');
+        userList.innerHTML = users.map(u => `
+            <button class="user-switch-btn" onclick="autoLogin(${u.id})">
+                <span class="u-name">${u.name || u.username}</span>
+                <span class="u-role">${u.role}</span>
+                <span class="u-branch">${u.branch_name || 'All Branches'}</span>
+            </button>
+        `).join('');
+    } catch (err) {
+        userList.innerHTML = '<div class="error">Failed to load users for auto-login</div>';
+    }
+}
+
+async function autoLogin(userId) {
+    try {
+        const res = await fetch('/api/auth/auto-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Auto-login failed');
+
+        localStorage.setItem('cafs_auth', JSON.stringify({
+            token: data.token,
+            user: data.user,
+            timestamp: Date.now()
+        }));
+
+        showToast("Switching user...", "success");
+        setTimeout(() => window.location.href = 'index.html', 800);
+    } catch (err) {
+        showToast(err.message, "error");
+    }
+}
+
+// Make functions global
+window.loadUsersPage = loadUsersPage;
+window.openUserModal = openUserModal;
+window.saveUser = saveUser;
+window.loadBranchesPage = loadBranchesPage;
+window.openBranchModal = openBranchModal;
+window.saveBranch = saveBranch;
+window.initNavigation = initNavigation;
+window.autoLogin = autoLogin;
+window.renderSuperAdminTools = renderSuperAdminTools;

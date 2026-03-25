@@ -4,7 +4,7 @@ const router = express.Router();
 // Form-A: Item-wise ledger report
 router.get('/form-a', async (req, res) => {
     const db = req.app.locals.db;
-    const { item_id, bond_no, from_date, to_date } = req.query;
+    const { item_id, bond_no, from_date, to_date, branch_id } = req.query;
     
     try {
         let query = `
@@ -66,6 +66,10 @@ router.get('/form-a', async (req, res) => {
             query += ' AND ie.date_of_receipt <= ?';
             params.push(to_date);
         }
+        if (branch_id) {
+            query += ' AND branch_id = ?';
+            params.push(branch_id);
+        }
         
         query += ' ORDER BY ie.date_of_receipt, ie.id';
         
@@ -113,51 +117,77 @@ router.get('/form-a', async (req, res) => {
 // Form-B: Monthly summary of items with bonding expiry
 router.get('/form-b', async (req, res) => {
     const db = req.app.locals.db;
-    const { month, year } = req.query;
+    const { month, year, branch_id, consignment_id } = req.query;
     
-    const currentDate = new Date();
-    const targetMonth = month ? parseInt(month) : currentDate.getMonth() + 1;
-    const targetYear = year ? parseInt(year) : currentDate.getFullYear();
+    const targetMonth = month ? parseInt(month) : new Date().getMonth() + 1;
+    const targetYear = year ? parseInt(year) : new Date().getFullYear();
     
-    const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1;
-    const nextYear = targetMonth === 12 ? targetYear + 1 : targetYear;
-    const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
-    const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+    // Last day of the target month
+    const endDate = new Date(targetYear, targetMonth, 0).toISOString().split('T')[0];
     
     try {
+        // 1. Fetch branch info
+        let warehouse_code = 'Cok15173';
+        let warehouse_name = 'M/s. Casino Air Caterers & Flight Services (Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572';
+        
+        if (branch_id) {
+            const [branches] = await db.query("SELECT * FROM branches WHERE id = ?", [branch_id]);
+            if (branches.length > 0) {
+                warehouse_code = branches[0].code || warehouse_code;
+                warehouse_name = `${branches[0].name} Warehouse`;
+            }
+        }
+
+        // 2. Main query for monthly closing stock - Aggregate by Airline (Consignment)
         let query = `
-            SELECT ie.*, c.name as consignment_name,
-                (ie.qty_received - COALESCE(
-                    (SELECT SUM(qty_dispatched - qty_returned_bag) FROM outward_items WHERE inward_id = ie.id), 0
+            SELECT c.name as consignment_name,
+                SUM(ie.qty_received) as total_qty_received,
+                SUM(ie.qty_received - COALESCE(
+                    (SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) 
+                     FROM outward_items oi 
+                     JOIN outward_entries oe ON oi.outward_id = oe.id 
+                     WHERE oi.inward_id = ie.id AND oe.dispatch_date <= ?), 0
                 ) - COALESCE(
-                    (SELECT SUM(di.qty_damaged) FROM damaged_items di JOIN inward_items ii ON di.inward_item_id = ii.id WHERE ii.inward_id = ie.id), 0
+                    (SELECT SUM(di.qty_damaged) 
+                     FROM damaged_items di 
+                     JOIN inward_items ii ON di.inward_item_id = ii.id 
+                     WHERE ii.inward_id = ie.id AND di.created_at <= ?), 0
                 ) + COALESCE(
-                    (SELECT SUM(rse.qty_returned) FROM return_stock_entries rse JOIN inward_items ii ON rse.inward_item_id = ii.id WHERE ii.inward_id = ie.id), 0
-                )) as qty_in_stock
+                    (SELECT SUM(rse.qty_returned) 
+                     FROM return_stock_entries rse 
+                     JOIN inward_items ii ON rse.inward_item_id = ii.id 
+                     WHERE ii.inward_id = ie.id AND rse.created_at <= ?), 0
+                )) as qty_in_stock,
+                SUM(ie.value) as total_value,
+                MAX(ie.be_no) as be_no,
+                MAX(ie.be_date) as be_date,
+                MAX(ie.bond_no) as bond_no,
+                MAX(ie.date_of_order_section_60) as date_of_order_section_60,
+                MAX(ie.sl_no_import_invoice) as sl_no_import_invoice,
+                MAX(ie.initial_bonding_expiry) as initial_bonding_expiry,
+                MAX(ie.extended_bonding_expiry1) as extended_bonding_expiry1,
+                MAX(ie.extended_bonding_expiry2) as extended_bonding_expiry2,
+                MAX(ie.extended_bonding_expiry3) as extended_bonding_expiry3,
+                MAX(ie.value_rate) as value_rate,
+                'Summary' as remarks
             FROM inward_entries ie
             LEFT JOIN consignments c ON ie.consignment_id = c.id
-            WHERE (
-                (ie.initial_bonding_expiry >= ? AND ie.initial_bonding_expiry < ?)
-                OR (ie.extended_bonding_expiry1 >= ? AND ie.extended_bonding_expiry1 < ?)
-                OR (ie.extended_bonding_expiry2 >= ? AND ie.extended_bonding_expiry2 < ?)
-            )
-            AND (ie.qty_received - COALESCE(
-                (SELECT SUM(qty_dispatched - qty_returned_bag) FROM outward_items WHERE inward_id = ie.id), 0
-            ) - COALESCE(
-                (SELECT SUM(di.qty_damaged) FROM damaged_items di JOIN inward_items ii ON di.inward_item_id = ii.id WHERE ii.inward_id = ie.id), 0
-            ) + COALESCE(
-                (SELECT SUM(rse.qty_returned) FROM return_stock_entries rse JOIN inward_items ii ON rse.inward_item_id = ii.id WHERE ii.inward_id = ie.id), 0
-            )) > 0
+            WHERE ie.date_of_receipt <= ?
         `;
         
-        let params = [startDate, endDate, startDate, endDate, startDate, endDate];
+        let params = [endDate, endDate + ' 23:59:59', endDate + ' 23:59:59', endDate];
         
-        if (req.query.consignment_id) {
-            query += ` AND ie.consignment_id = ?`;
-            params.push(req.query.consignment_id);
+        if (branch_id) {
+            query += ` AND ie.branch_id = ?`;
+            params.push(branch_id);
         }
         
-        query += ` ORDER BY c.name, ie.initial_bonding_expiry`;
+        if (consignment_id) {
+            query += ` AND ie.consignment_id = ?`;
+            params.push(consignment_id);
+        }
+        
+        query += ` GROUP BY ie.consignment_id HAVING qty_in_stock > 0 ORDER BY c.name`;
 
         const [entries] = await db.query(query, params);
         
@@ -174,11 +204,11 @@ router.get('/form-b', async (req, res) => {
         
         res.json({
             report_type: 'FORM-B',
-            report_title: `FORM-B FOR THE MONTH OF ${monthNames[targetMonth]} ${targetYear}`,
-            subtitle: 'Details of goods stored in the warehouse where the period for which they may remain warehoused under section 61 is expiring in the following month.',
-            circular_ref: 'Circular No 25/2016 -Customs dated 08.06.2016',
-            warehouse_code: 'Cok15003',
-            warehouse_name: 'M/s. Casino Air Caterers & Flight Services (Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572',
+            report_title: `FORM-B - MONTHLY CLOSING STOCK - ${monthNames[targetMonth]} ${targetYear}`,
+            subtitle: 'Airline-wise details of goods stored in the warehouse.',
+            circular_ref: 'In terms of Circular No 25/2016-Customs dated 08.06.2016',
+            warehouse_code,
+            warehouse_name,
             month: targetMonth,
             year: targetYear,
             generated_at: new Date().toISOString(),
@@ -311,8 +341,16 @@ router.get('/consignment-wise', async (req, res) => {
 // Get unique bond numbers for filters
 router.get('/unique-bond-numbers', async (req, res) => {
     const db = req.app.locals.db;
+    const { branch_id } = req.query;
     try {
-        const [rows] = await db.query('SELECT DISTINCT bond_no FROM inward_entries WHERE bond_no IS NOT NULL AND bond_no != "" ORDER BY bond_no ASC');
+        let query = 'SELECT DISTINCT bond_no FROM inward_entries WHERE bond_no IS NOT NULL AND bond_no != ""';
+        let params = [];
+        if (branch_id) {
+            query += ' AND branch_id = ?';
+            params.push(branch_id);
+        }
+        query += ' ORDER BY bond_no ASC';
+        const [rows] = await db.query(query, params);
         res.json(rows.map(r => r.bond_no));
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -322,13 +360,13 @@ router.get('/unique-bond-numbers', async (req, res) => {
 // Detailed Stock Report
 router.get('/stock-report', async (req, res) => {
     const db = req.app.locals.db;
-    const { consignment_id, item_id, bond_no, from_date, to_date, expiry_date } = req.query;
+    const { consignment_id, item_id, bond_no, from_date, to_date, expiry_date, branch_id } = req.query;
     try {
         let query = `
             SELECT * FROM (
                 SELECT ii.*, ie.be_no, ie.be_date, ie.bond_no, ie.initial_bonding_expiry, ie.date_of_receipt,
                        ie.extended_bonding_expiry1, ie.extended_bonding_expiry2, ie.extended_bonding_expiry3,
-                       ie.consignment_id,
+                       ie.consignment_id, ie.branch_id,
                        c.name as consignment_name,
                        (ii.qty - COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0)
                               - COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0)) as available_qty
@@ -362,6 +400,10 @@ router.get('/stock-report', async (req, res) => {
         if (expiry_date) {
             query += ' AND (initial_bonding_expiry = ? OR extended_bonding_expiry1 = ? OR extended_bonding_expiry2 = ? OR extended_bonding_expiry3 = ?)';
             params.push(expiry_date, expiry_date, expiry_date, expiry_date);
+        }
+        if (branch_id) {
+            query += ' AND branch_id = ?';
+            params.push(branch_id);
         }
         
         query += ' ORDER BY initial_bonding_expiry ASC';
@@ -576,37 +618,55 @@ router.get('/shipping-bill', async (req, res) => {
 // Dashboard stats
 router.get('/dashboard', async (req, res) => {
     const db = req.app.locals.db;
+    const { branch_id } = req.query;
     
     try {
+        let whereClause = branch_id ? ' WHERE branch_id = ?' : ' WHERE 1=1';
+        let params = branch_id ? [branch_id] : [];
+
         const [[totalItems]] = await db.query('SELECT COUNT(*) as count FROM items');
         const [[totalConsignments]] = await db.query('SELECT COUNT(*) as count FROM consignments');
         
         const [[inwardStats]] = await db.query(`
-            SELECT COUNT(DISTINCT inward_id) as count, SUM(qty) as total_qty 
-            FROM inward_items
-        `);
+            SELECT COUNT(DISTINCT ii.inward_id) as count, SUM(ii.qty) as total_qty 
+            FROM inward_items ii
+            WHERE ii.inward_id IN (SELECT id FROM inward_entries ${whereClause})
+        `, params);
         
         const [[outwardStats]] = await db.query(`
-            SELECT COUNT(DISTINCT outward_id) as count, SUM(qty_dispatched) as dispatched 
-            FROM outward_items
-        `);
+            SELECT COUNT(DISTINCT oi.outward_id) as count, 
+                   SUM(oi.qty_dispatched) as dispatched,
+                   SUM(oi.qty_returned_bag) as returned_bag
+            FROM outward_items oi
+            WHERE oi.outward_id IN (SELECT id FROM outward_entries ${whereClause})
+        `, params);
 
-        const [[damagedResult]] = await db.query('SELECT COALESCE(SUM(qty_damaged), 0) as total FROM damaged_items');
-        const [[returnResult]] = await db.query('SELECT COALESCE(SUM(qty_returned), 0) as total FROM return_stock_entries');
+        const [[damagedResult]] = await db.query(`
+            SELECT COALESCE(SUM(di.qty_damaged), 0) as total FROM damaged_items di
+            WHERE ${branch_id ? "di.branch_id = ?" : "1=1"}
+        `, branch_id ? [branch_id] : []);
+        
+        const [[returnResult]] = await db.query(`
+            SELECT COALESCE(SUM(rs.qty_returned), 0) as total FROM return_stock_entries rs
+            WHERE ${branch_id ? "rs.branch_id = ?" : "1=1"}
+        `, branch_id ? [branch_id] : []);
         
         const totalInwardQty = inwardStats.total_qty || 0;
         const totalOutwardQty = outwardStats.dispatched || 0;
+        const totalReturnedBag = outwardStats.returned_bag || 0;
         const totalDamaged = damagedResult.total || 0;
         const totalReturnedOrigin = returnResult.total || 0;
         
-        // Items expiring this month
+        const current_stock = Number(totalInwardQty) - (Number(totalOutwardQty) - Number(totalReturnedBag)) - Number(totalDamaged) + Number(totalReturnedOrigin);
+        
         const currentDate = new Date();
-        const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+        const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1).toISOString().split('T')[0];
+        
         const [[expiringCount]] = await db.query(`
             SELECT COUNT(*) as count FROM inward_entries 
-            WHERE initial_bonding_expiry < ? 
-               OR (extended_bonding_expiry1 IS NOT NULL AND extended_bonding_expiry1 < ?)
-        `, [nextMonth.toISOString().split('T')[0], nextMonth.toISOString().split('T')[0]]);
+            WHERE (initial_bonding_expiry < ? OR (extended_bonding_expiry1 IS NOT NULL AND extended_bonding_expiry1 < ?))
+            ${branch_id ? " AND branch_id = ?" : ""}
+        `, [nextMonth, nextMonth, ...(branch_id ? [branch_id] : [])]);
         
         const [recentInward] = await db.query(`
             SELECT ie.*, c.name as consignment_name,
@@ -614,8 +674,9 @@ router.get('/dashboard', async (req, res) => {
                    (SELECT SUM(qty) FROM inward_items ii WHERE ii.inward_id = ie.id) as qty_received
             FROM inward_entries ie 
             LEFT JOIN consignments c ON ie.consignment_id = c.id 
+            ${branch_id ? " WHERE ie.branch_id = ?" : ""}
             ORDER BY ie.created_at DESC LIMIT 5
-        `);
+        `, branch_id ? [branch_id] : []);
         
         const [recentOutward] = await db.query(`
             SELECT oe.*, c.name as consignment_name,
@@ -626,8 +687,9 @@ router.get('/dashboard', async (req, res) => {
                    (SELECT SUM(qty_returned_bag) FROM outward_items oi WHERE oi.outward_id = oe.id) as total_returned
             FROM outward_entries oe 
             LEFT JOIN consignments c ON oe.consignment_id = c.id 
+            ${branch_id ? " WHERE oe.branch_id = ?" : ""}
             ORDER BY oe.created_at DESC LIMIT 5
-        `);
+        `, branch_id ? [branch_id] : []);
         
         res.json({
             stats: {
@@ -637,9 +699,8 @@ router.get('/dashboard', async (req, res) => {
                 total_qty_received: totalInwardQty,
                 total_outward_entries: outwardStats.count || 0,
                 total_qty_dispatched: totalOutwardQty,
-                total_qty_returned: 0, // Simplified for now as it's complex to aggregate bag returns here
                 total_qty_returned_origin: totalReturnedOrigin,
-                current_stock: totalInwardQty - totalOutwardQty - totalDamaged + totalReturnedOrigin,
+                current_stock: current_stock,
                 expiring_soon: expiringCount.count
             },
             recent_inward: recentInward,
