@@ -4078,37 +4078,32 @@ function downloadFormAPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
 
-  // Create a clone and force it to be wide and high-res
-  const clone = container.cloneNode(true);
-  clone.style.width = '1500px';
-  clone.style.maxWidth = 'none';
-  clone.style.background = 'white';
-  clone.style.position = 'absolute';
-  clone.style.left = '-9999px';
-  clone.style.top = '0';
-  document.body.appendChild(clone);
-
-  // Force tables inside the clone to be properly sized
-  clone.querySelectorAll('table').forEach(tbl => {
-    tbl.style.width = '100%';
-    tbl.style.tableLayout = 'fixed';
-    tbl.style.minWidth = '1400px';
-  });
+  // Wrap HTML in a fixed-width container for the PDF worker
+  const htmlContent = `
+    <div style="width: 1580px; padding: 10px; background: white; font-family: 'Inter', Arial, sans-serif;">
+      <style>
+        .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
+        .table-bordered th, .table-bordered td { border: 1px solid #d1d5db !important; padding: 4px; }
+        .text-center { text-center: center !important; }
+        .report-table { font-size: 8px; }
+        h4, h5 { margin: 5px 0; text-align: center; }
+      </style>
+      ${container.innerHTML}
+    </div>
+  `;
 
   const opt = {
     margin:       [10, 10, 10, 10],
     filename:     `Form-A_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1500 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
-  html2pdf().set(opt).from(clone).save().then(() => {
-    document.body.removeChild(clone);
+  html2pdf().set(opt).from(htmlContent).save().then(() => {
     showToast('PDF downloaded successfully!');
   }).catch(err => {
-    document.body.removeChild(clone);
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
@@ -4122,37 +4117,31 @@ function downloadFormBPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
 
-  // Create a clone and force it to be wide and high-res
-  const clone = container.cloneNode(true);
-  clone.style.width = '1500px';
-  clone.style.maxWidth = 'none';
-  clone.style.background = 'white';
-  clone.style.position = 'absolute';
-  clone.style.left = '-9999px';
-  clone.style.top = '0';
-  document.body.appendChild(clone);
-
-  // Force tables inside the clone to be properly sized
-  clone.querySelectorAll('table').forEach(tbl => {
-    tbl.style.width = '100%';
-    tbl.style.tableLayout = 'fixed';
-    tbl.style.minWidth = '1400px';
-  });
+  const htmlContent = `
+    <div style="width: 1580px; padding: 10px; background: white; font-family: 'Inter', Arial, sans-serif;">
+      <style>
+        .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
+        .table-bordered th, .table-bordered td { border: 1px solid #d1d5db !important; padding: 4px; }
+        .text-center { text-center: center !important; }
+        .report-table { font-size: 8px; }
+        h4, h5 { margin: 5px 0; text-align: center; }
+      </style>
+      ${container.innerHTML}
+    </div>
+  `;
 
   const opt = {
     margin:       [10, 10, 10, 10],
     filename:     `Form-B_Report_${new Date().toISOString().split('T')[0]}.pdf`,
     image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1500 },
+    html2canvas:  { scale: 2, useCORS: true, letterRendering: true, logging: false, windowWidth: 1600 },
     jsPDF:        { unit: 'pt', format: 'a3', orientation: 'landscape' },
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
-  html2pdf().set(opt).from(clone).save().then(() => {
-    document.body.removeChild(clone);
+  html2pdf().set(opt).from(htmlContent).save().then(() => {
     showToast('PDF downloaded successfully!');
   }).catch(err => {
-    document.body.removeChild(clone);
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
@@ -4166,15 +4155,17 @@ function downloadStockPDF() {
   }
   showToast('Generating PDF... Please wait.', 'info');
 
-  // Create a clone and force it to be wide and high-res
-  const clone = container.cloneNode(true);
-  clone.style.width = '1200px';
-  clone.style.maxWidth = 'none';
-  clone.style.background = 'white';
-  clone.style.position = 'absolute';
-  clone.style.left = '-9999px';
-  clone.style.top = '0';
-  document.body.appendChild(clone);
+  const htmlContent = `
+    <div style="width: 1100px; padding: 10px; background: white; font-family: 'Inter', Arial, sans-serif;">
+      <style>
+        .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+        .table-bordered th, .table-bordered td { border: 1px solid #d1d5db !important; padding: 4px; }
+        th { background-color: #f9fafb; text-align: left; font-size: 10px; }
+        td { font-size: 9px; }
+      </style>
+      ${container.innerHTML}
+    </div>
+  `;
 
   const opt = {
     margin:       [5, 5, 5, 5],
@@ -4185,11 +4176,9 @@ function downloadStockPDF() {
     pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
-  html2pdf().set(opt).from(clone).save().then(() => {
-    document.body.removeChild(clone);
+  html2pdf().set(opt).from(htmlContent).save().then(() => {
     showToast('PDF downloaded successfully!');
   }).catch(err => {
-    document.body.removeChild(clone);
     console.error('PDF Error:', err);
     showToast('Error generating PDF', 'error');
   });
