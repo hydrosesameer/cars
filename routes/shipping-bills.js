@@ -68,9 +68,9 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
     const db = req.app.locals.db;
     const {
-        shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
+        sb_no, sb_date, consignment_id, flight_no,
         etd, vt, port_of_discharge, country_of_destination, station,
-        exporter_name, exporter_address, entered_no, entered_date,
+        exporter_name, exporter_address, entered_no,
         remarks, items, branch_id
     } = req.body;
 
@@ -78,7 +78,7 @@ router.post('/', async (req, res) => {
     await connection.beginTransaction();
 
     try {
-        if (!shipping_bill_no || !shipping_bill_date) {
+        if (!sb_no || !sb_date) {
             throw new Error('Shipping Bill No and Date are required');
         }
         if (!items || !Array.isArray(items) || items.length === 0) {
@@ -104,19 +104,19 @@ router.post('/', async (req, res) => {
 
         const [result] = await connection.query(`
             INSERT INTO shipping_bills (
-                shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
+                sb_no, sb_date, consignment_id, flight_no,
                 etd, vt, port_of_discharge, country_of_destination, station,
-                exporter_name, exporter_address, entered_no, entered_date,
+                exporter_name, exporter_address, entered_no,
                 remarks, status, branch_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?)
         `, [
-            shipping_bill_no, shipping_bill_date, consignment_id || null, flight_no || null,
+            sb_no, sb_date, consignment_id || null, flight_no || null,
             etd || null, vt || null,
             port_of_discharge || 'COK/KWI/COK', country_of_destination || 'KWI',
             station || 'COCHIN',
             exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
             exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
-            entered_no || null, entered_date || null,
+            entered_no || null,
             remarks || null, branch_id
         ]);
 
@@ -151,9 +151,9 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     const db = req.app.locals.db;
     const {
-        shipping_bill_no, shipping_bill_date, consignment_id, flight_no,
+        sb_no, sb_date, consignment_id, flight_no,
         etd, vt, port_of_discharge, country_of_destination, station,
-        exporter_name, exporter_address, entered_no, entered_date,
+        exporter_name, exporter_address, entered_no,
         remarks, items
     } = req.body;
 
@@ -167,19 +167,19 @@ router.put('/:id', async (req, res) => {
 
         await connection.query(`
             UPDATE shipping_bills SET
-                shipping_bill_no = ?, shipping_bill_date = ?, consignment_id = ?, flight_no = ?,
+                sb_no = ?, sb_date = ?, consignment_id = ?, flight_no = ?,
                 etd = ?, vt = ?, port_of_discharge = ?, country_of_destination = ?, station = ?,
-                exporter_name = ?, exporter_address = ?, entered_no = ?, entered_date = ?,
+                exporter_name = ?, exporter_address = ?, entered_no = ?,
                 remarks = ?
             WHERE id = ?
         `, [
-            shipping_bill_no, shipping_bill_date, consignment_id || null, flight_no || null,
+            sb_no, sb_date, consignment_id || null, flight_no || null,
             etd || null, vt || null,
             port_of_discharge || 'COK/KWI/COK', country_of_destination || 'KWI',
             station || 'COCHIN',
             exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
             exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
-            entered_no || null, entered_date || null,
+            entered_no || null,
             remarks || null, req.params.id
         ]);
 
@@ -274,11 +274,11 @@ router.put('/:id/approve', async (req, res) => {
                 total_dispatched, value, duty, remarks, branch_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Re-export', 'Re-export', ?, ?, ?, ?, ?)
         `, [
-            primaryInwardId, bill.id, bill.shipping_bill_date, bill.flight_no,
-            bill.consignment_id, bill.shipping_bill_no, bill.shipping_bill_date,
+            primaryInwardId, bill.id, bill.sb_date, bill.flight_no,
+            bill.consignment_id, bill.sb_no, bill.sb_date,
             bill.vt || null,
             totalQty, totalValue, totalDuty,
-            `Dispatched from Shipping Bill #${bill.shipping_bill_no}`,
+            `Dispatched from Shipping Bill #${bill.sb_no}`,
             bill.branch_id
         ]);
 
@@ -317,6 +317,76 @@ router.put('/:id/approve', async (req, res) => {
     }
 });
 
+// Update shipping bill
+router.put('/:id', async (req, res) => {
+    const db = req.app.locals.db;
+    const { 
+        sb_no, sb_date, consignment_id, flight_no, station, etd, vt, remarks, items, 
+        user_role, user_branch_id 
+    } = req.body;
+
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        const [existing] = await connection.query('SELECT status, branch_id FROM shipping_bills WHERE id = ?', [req.params.id]);
+        if (existing.length === 0) throw new Error('Shipping bill not found');
+        const bill = existing[0];
+
+        if (bill.status !== 'DRAFT') throw new Error('Only DRAFT bills can be edited');
+
+        // Role-based branch check
+        if (user_role !== 'SUPER_ADMIN' && bill.branch_id !== user_branch_id) {
+            throw new Error('You do not have permission to edit this shipping bill.');
+        }
+
+        // 1. Update bill header
+        await connection.query(`
+            UPDATE shipping_bills SET 
+                sb_no = ?, sb_date = ?, consignment_id = ?, flight_no = ?, 
+                station = ?, etd = ?, vt = ?, remarks = ?
+            WHERE id = ?
+        `, [sb_no, sb_date, consignment_id, flight_no, station, etd, vt, remarks, req.params.id]);
+
+        // 2. Handle items
+        // Delete items removed in the UI
+        const currentItemIds = items.filter(i => i.id).map(i => i.id);
+        if (currentItemIds.length > 0) {
+            await connection.query('DELETE FROM shipping_bill_items WHERE shipping_bill_id = ? AND id NOT IN (?)', [req.params.id, currentItemIds]);
+        } else {
+            await connection.query('DELETE FROM shipping_bill_items WHERE shipping_bill_id = ?', [req.params.id]);
+        }
+
+        for (const item of items) {
+            if (item.id) {
+                // Update
+                await connection.query(`
+                    UPDATE shipping_bill_items SET 
+                        inward_item_id = ?, inward_id = ?, item_id = ?, 
+                        description = ?, qty = ?, value_amount = ?, duty_amount = ?
+                    WHERE id = ?
+                `, [item.inward_item_id, item.inward_id, item.item_id, item.description, item.qty, item.value_amount, item.duty_amount, item.id]);
+            } else {
+                // Insert
+                await connection.query(`
+                    INSERT INTO shipping_bill_items (
+                        shipping_bill_id, inward_item_id, inward_id, item_id, 
+                        description, qty, value_amount, duty_amount
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `, [req.params.id, item.inward_item_id, item.inward_id, item.item_id, item.description, item.qty, item.value_amount, item.duty_amount]);
+            }
+        }
+
+        await connection.commit();
+        res.json({ message: 'Shipping bill updated successfully' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
 // Delete shipping bill (DRAFT only)
 router.delete('/:id', async (req, res) => {
     const db = req.app.locals.db;
@@ -324,9 +394,25 @@ router.delete('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     try {
-        const [bills] = await connection.query('SELECT status FROM shipping_bills WHERE id = ?', [req.params.id]);
+        const [bills] = await connection.query('SELECT status, created_at FROM shipping_bills WHERE id = ?', [req.params.id]);
         if (bills.length === 0) throw new Error('Shipping bill not found');
-        if (bills[0].status !== 'DRAFT') throw new Error('Only DRAFT bills can be deleted');
+        const bill = bills[0];
+
+        if (bill.status !== 'DRAFT') throw new Error('Only DRAFT bills can be deleted');
+
+        // Enforcement: Only Admin/Manager within 3 days
+        const user_role = req.body.user_role || req.query.user_role;
+        const allowedRoles = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'];
+        if (!allowedRoles.includes(user_role)) {
+            throw new Error('You do not have permission to delete shipping bills. (Role: ' + (user_role || 'none') + ')');
+        }
+
+        const createdDate = new Date(bill.created_at);
+        const now = new Date();
+        const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
+        if (diffDays > 3) {
+            throw new Error('Deletion is only allowed within 3 days of creation.');
+        }
 
         await connection.query('DELETE FROM shipping_bill_items WHERE shipping_bill_id = ?', [req.params.id]);
         await connection.query('DELETE FROM shipping_bills WHERE id = ?', [req.params.id]);
@@ -338,6 +424,105 @@ router.delete('/:id', async (req, res) => {
         res.status(error.message.includes('found') || error.message.includes('DRAFT') ? 400 : 500).json({ error: error.message });
     } finally {
         connection.release();
+    }
+});
+
+// Unapprove shipping bill (deletes outward entry and reverts to DRAFT)
+router.post('/:id/unapprove', async (req, res) => {
+    const db = req.app.locals.db;
+    const { unapproved_by, remarks, user_role, user_branch_id } = req.body;
+
+    // Role-based access control for unapproval
+    const allowedRoles = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'];
+    if (!allowedRoles.includes(user_role)) {
+        return res.status(403).json({ error: 'You do not have permission to unapprove shipping bills.' });
+    }
+
+    if (!remarks || remarks.trim() === '') {
+        return res.status(400).json({ error: 'Remarks are mandatory for unapproval.' });
+    }
+
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        const [bills] = await connection.query('SELECT * FROM shipping_bills WHERE id = ?', [req.params.id]);
+        if (bills.length === 0) throw new Error('Shipping bill not found');
+        const bill = bills[0];
+
+        if (bill.status !== 'APPROVED') throw new Error('Only APPROVED bills can be unapproved');
+
+        // Ensure branch match for non-super admins (Relaxed for ADMIN)
+        const globalRoles = ['SUPER_ADMIN', 'ADMIN'];
+        if (!globalRoles.includes(user_role) && bill.branch_id !== user_branch_id) {
+            throw new Error('You can only unapprove shipping bills for your own branch.');
+        }
+
+        // 1. Find and delete associated outward items and entries
+        const [outwards] = await connection.query('SELECT id FROM outward_entries WHERE shipping_bill_id = ?', [req.params.id]);
+        for (const out of outwards) {
+            await connection.query('DELETE FROM outward_items WHERE outward_id = ?', [out.id]);
+            await connection.query('DELETE FROM outward_entries WHERE id = ?', [out.id]);
+        }
+
+        // 2. Revert shipping bill to DRAFT
+        await connection.query(`
+            UPDATE shipping_bills SET 
+                status = 'DRAFT', 
+                unapproved_by = ?, 
+                unapproved_at = CURRENT_TIMESTAMP,
+                unapproved_remarks = ?
+            WHERE id = ?
+        `, [unapproved_by || 'Admin', remarks, req.params.id]);
+
+        await connection.commit();
+        res.json({ message: 'Shipping bill unapproved successfully. It is now in DRAFT status.' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(error.message.includes('found') || error.message.includes('APPROVED') ? 400 : 500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+// Reject shipping bill (sets remarks for DRAFT bills)
+router.post('/:id/reject', async (req, res) => {
+    const db = req.app.locals.db;
+    const { rejected_by, remarks, user_role, user_branch_id } = req.body;
+
+    // Role-based access control for rejection
+    const allowedRoles = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'];
+    if (!allowedRoles.includes(user_role)) {
+        return res.status(403).json({ error: 'You do not have permission to reject shipping bills.' });
+    }
+
+    if (!remarks || remarks.trim() === '') {
+        return res.status(400).json({ error: 'Remarks are mandatory for rejection.' });
+    }
+
+    try {
+        const [bills] = await db.query('SELECT * FROM shipping_bills WHERE id = ?', [req.params.id]);
+        if (bills.length === 0) return res.status(404).json({ error: 'Shipping bill not found' });
+        const bill = bills[0];
+
+        if (bill.status !== 'DRAFT') return res.status(400).json({ error: 'Only DRAFT bills can be rejected with remarks.' });
+
+        const globalRoles = ['SUPER_ADMIN', 'ADMIN'];
+        if (!globalRoles.includes(user_role) && bill.branch_id !== user_branch_id) {
+            return res.status(403).json({ error: 'You can only reject shipping bills for your own branch.' });
+        }
+
+        await db.query(`
+            UPDATE shipping_bills SET 
+                unapproved_by = ?, 
+                unapproved_at = CURRENT_TIMESTAMP,
+                unapproved_remarks = ?
+            WHERE id = ?
+        `, [rejected_by || 'Admin', remarks, req.params.id]);
+
+        res.json({ message: 'Shipping bill marked as Not Approved with remarks.' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 

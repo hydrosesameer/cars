@@ -137,7 +137,7 @@ router.post('/', async (req, res) => {
     `, [
         be_no, be_date, customs_station || 'COK', bond_no, bond_date || null, shipping_bill_no || null, shipping_bill_date || null,
         date_of_order_section_60 || null, sl_no_import_invoice || null, consignment_id || null, warehouse_code || 'Cok15003',
-        warehouse_address || 'Nayathode P.O Angamali Kerala 683572', transport_reg_no || null, otl_no || null, mode_of_receipt || 'By Road', qty_advised || totalQty,
+        warehouse_address || 'Nayathode P.O Angamali Kerala 683572', transport_reg_no || null, otl_no || null, mode_of_receipt || 'AIRLINE', qty_advised || totalQty,
         totalQty, date_of_receipt, initial_bonding_date || null, initial_bonding_expiry || null,
         extended_bonding_date1 || null, extended_bonding_expiry1 || null, extended_bonding_date2 || null, extended_bonding_expiry2 || null,
         extended_bonding_date3 || null, extended_bonding_expiry3 || null, bank_guarantee || 'NA', relinquishment || 0,
@@ -148,9 +148,9 @@ router.post('/', async (req, res) => {
 
         for (const item of items) {
             await connection.query(`
-                INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null]);
+                INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent, bond_no, bond_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null, item.bond_no || null, item.bond_date || null]);
         }
 
         await connection.commit();
@@ -197,7 +197,7 @@ router.put('/:id', async (req, res) => {
             header.be_no, header.be_date, header.customs_station, header.bond_no, header.bond_date || null,
             header.shipping_bill_no || null, header.shipping_bill_date || null, header.date_of_order_section_60 || null,
             header.sl_no_import_invoice || null, header.consignment_id || null, header.warehouse_code || 'Cok15003',
-            header.warehouse_address || 'Nayathode P.O Angamali Kerala 683572', header.transport_reg_no || null, header.otl_no || null, header.mode_of_receipt || 'By Road',
+            header.warehouse_address || 'Nayathode P.O Angamali Kerala 683572', header.transport_reg_no || null, header.otl_no || null, header.mode_of_receipt || 'AIRLINE',
             header.qty_advised || totalQty, totalQty, header.date_of_receipt,
             header.initial_bonding_date || null, header.initial_bonding_expiry || null,
             header.extended_bonding_date1 || null, header.extended_bonding_expiry1 || null,
@@ -217,15 +217,15 @@ router.put('/:id', async (req, res) => {
             if (itemId && currentIds.has(itemId)) {
                 await connection.query(`
                     UPDATE inward_items SET 
-                        item_id = ?, description = ?, qty = ?, unit = ?, value = ?, duty = ?, hsn_code = ?, shelf_life_date = ?, duty_percent = ?
+                        item_id = ?, description = ?, qty = ?, unit = ?, value = ?, duty = ?, hsn_code = ?, shelf_life_date = ?, duty_percent = ?, bond_no = ?, bond_date = ?
                     WHERE id = ?
-                `, [item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null, item.id]);
-                processedIds.add(item.id);
+                `, [item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null, item.bond_no || null, item.bond_date || null, item.id]);
+                processedIds.add(itemId);
             } else {
                 await connection.query(`
-                    INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null]);
+                    INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent, bond_no, bond_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date || null, item.duty_percent || null, item.bond_no || null, item.bond_date || null]);
             }
         }
 

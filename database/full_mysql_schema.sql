@@ -1,4 +1,5 @@
 -- FINAL COMPREHENSIVE MySQL Schema for CAFS Inventory
+-- Structure-only (No local data)
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -11,199 +12,302 @@ DROP TABLE IF EXISTS outward_entries;
 DROP TABLE IF EXISTS inward_items;
 DROP TABLE IF EXISTS inward_entries;
 DROP TABLE IF EXISTS items;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS countries;
 DROP TABLE IF EXISTS consignments;
+DROP TABLE IF EXISTS branches;
 
-CREATE TABLE consignments (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    code VARCHAR(50),
-    airline_code VARCHAR(10),
-    type ENUM('AIRLINE', 'LOCATION', 'SHIP', 'ROAD', 'OTHER') DEFAULT 'OTHER',
-    address TEXT,
-    contact_person VARCHAR(100),
-    phone VARCHAR(20),
-    email VARCHAR(100),
-    status ENUM('ACTIVE', 'INACTIVE') DEFAULT 'ACTIVE',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+-- 1. Branches / Godowns
+CREATE TABLE `branches` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `code` varchar(50) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `status` enum('ACTIVE','INACTIVE') DEFAULT 'ACTIVE',
+  `created_at` datetime DEFAULT current_timestamp(),
+  `airport_code` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE items (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    description VARCHAR(255) NOT NULL,
-    unit VARCHAR(20) DEFAULT 'PCS',
-    hsn_code VARCHAR(50),
-    category VARCHAR(100),
-    min_stock INT DEFAULT 0,
-    current_stock INT DEFAULT 0,
-    status ENUM('ACTIVE', 'INACTIVE') DEFAULT 'ACTIVE',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+-- 2. Consignments (Airlines, Locations, etc.)
+CREATE TABLE `consignments` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `code` varchar(50) DEFAULT NULL,
+  `airline_code` varchar(10) DEFAULT NULL,
+  `type` enum('AIRLINE','LOCATION','SHIP','ROAD','OTHER') DEFAULT 'OTHER',
+  `address` text DEFAULT NULL,
+  `contact_person` varchar(100) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `email` varchar(100) DEFAULT NULL,
+  `status` enum('ACTIVE','INACTIVE') DEFAULT 'ACTIVE',
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE inward_entries (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    be_no VARCHAR(50),
-    be_date DATE,
-    bond_no VARCHAR(50),
-    bond_date DATE,
-    shipping_bill_no VARCHAR(50),
-    shipping_bill_date DATE,
-    flight_no VARCHAR(50),
-    awb_no VARCHAR(50),
-    bill_no VARCHAR(50),
-    received_by VARCHAR(100),
-    otl_no VARCHAR(50),
-    mode_of_receipt VARCHAR(50) DEFAULT 'By Road',
-    qty_advised INT,
-    qty_received INT NOT NULL DEFAULT 0,
-    breakage_shortage INT DEFAULT 0,
-    date_of_receipt DATE NOT NULL,
-    consignment_id INT,
-    item_id INT,
-    initial_bonding_date DATE,
-    initial_bonding_expiry DATE,
-    extended_bonding_date1 DATE,
-    extended_bonding_expiry1 DATE,
-    extended_bonding_date2 DATE,
-    extended_bonding_expiry2 DATE,
-    extended_bonding_date3 DATE,
-    extended_bonding_expiry3 DATE,
-    bank_guarantee TEXT,
-    relinquishment TINYINT(1) DEFAULT 0,
-    duty_rate DECIMAL(15,4),
-    value_rate DECIMAL(15,4),
-    value DECIMAL(15,2),
-    duty DECIMAL(15,2),
-    sl_no_import_invoice VARCHAR(50),
-    pkg_marks TEXT,
-    pkg_description TEXT,
-    transport_reg_no VARCHAR(50),
-    date_of_order_section_60 DATE,
-    warehouse_code VARCHAR(50),
-    warehouse_address TEXT,
-    customs_station VARCHAR(100),
-    remarks TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (consignment_id) REFERENCES consignments(id),
-    FOREIGN KEY (item_id) REFERENCES items(id)
-);
+-- 3. Countries
+CREATE TABLE `countries` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `code` varchar(10) NOT NULL,
+  `port_of_discharge` varchar(100) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE inward_items (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    inward_id INT NOT NULL,
-    item_id INT,
-    description VARCHAR(255),
-    qty INT NOT NULL,
-    unit VARCHAR(20),
-    value DECIMAL(15,2),
-    duty DECIMAL(15,2),
-    qty_out INT DEFAULT 0,
-    bond_no VARCHAR(50),
-    bond_expiry DATE,
-    unit_value DECIMAL(15,4),
-    value_amount DECIMAL(15,2),
-    unit_duty DECIMAL(15,4),
-    duty_amount DECIMAL(15,2),
-    hsn_code VARCHAR(50),
-    shelf_life_date DATE,
-    FOREIGN KEY (inward_id) REFERENCES inward_entries(id) ON DELETE CASCADE,
-    FOREIGN KEY (item_id) REFERENCES items(id)
-);
+-- 4. Items / Products Master
+CREATE TABLE `items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `description` varchar(255) NOT NULL,
+  `unit` varchar(20) DEFAULT 'PCS',
+  `hsn_code` varchar(50) DEFAULT NULL,
+  `category` varchar(100) DEFAULT NULL,
+  `min_stock` int(11) DEFAULT 0,
+  `current_stock` int(11) DEFAULT 0,
+  `status` enum('ACTIVE','INACTIVE') DEFAULT 'ACTIVE',
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE outward_entries (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    dispatch_date DATE NOT NULL,
-    consignment_id INT,
-    inward_id INT,
-    nature_of_removal VARCHAR(100),
-    shipping_bill_no VARCHAR(50),
-    shipping_bill_date DATE,
-    flight_no VARCHAR(50),
-    purpose VARCHAR(100),
-    gate_pass_no VARCHAR(50),
-    released_by VARCHAR(100),
-    total_dispatched INT DEFAULT 0,
-    total_returned INT DEFAULT 0,
-    value DECIMAL(15,2),
-    duty DECIMAL(15,2),
-    registration_no_of_means_of_transport VARCHAR(50),
-    otl_no VARCHAR(50),
-    remarks TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (consignment_id) REFERENCES consignments(id),
-    FOREIGN KEY (inward_id) REFERENCES inward_entries(id)
-);
+-- 5. Users
+CREATE TABLE `users` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `username` varchar(50) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `full_name` varchar(100) DEFAULT NULL,
+  `role` enum('SUPER_ADMIN','ADMIN','MANAGER','APPROVER','STAFF') NOT NULL DEFAULT 'STAFF',
+  `branch_id` int(11) DEFAULT NULL,
+  `status` enum('ACTIVE','INACTIVE') DEFAULT 'ACTIVE',
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  KEY `branch_id` (`branch_id`),
+  CONSTRAINT `users_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE outward_items (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    outward_id INT NOT NULL,
-    inward_item_id INT NOT NULL,
-    inward_id INT,
-    item_id INT,
-    description VARCHAR(255),
-    qty_dispatched INT NOT NULL,
-    qty_returned_bag INT DEFAULT 0,
-    value DECIMAL(15,2),
-    duty DECIMAL(15,2),
-    FOREIGN KEY (outward_id) REFERENCES outward_entries(id) ON DELETE CASCADE,
-    FOREIGN KEY (inward_item_id) REFERENCES inward_items(id),
-    FOREIGN KEY (inward_id) REFERENCES inward_entries(id),
-    FOREIGN KEY (item_id) REFERENCES items(id)
-);
+-- 6. Inward Entries (Header)
+CREATE TABLE `inward_entries` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `be_no` varchar(50) DEFAULT NULL,
+  `be_date` date DEFAULT NULL,
+  `bond_no` varchar(50) DEFAULT NULL,
+  `bond_date` date DEFAULT NULL,
+  `shipping_bill_no` varchar(50) DEFAULT NULL,
+  `shipping_bill_date` date DEFAULT NULL,
+  `flight_no` varchar(50) DEFAULT NULL,
+  `awb_no` varchar(50) DEFAULT NULL,
+  `bill_no` varchar(50) DEFAULT NULL,
+  `received_by` varchar(100) DEFAULT NULL,
+  `otl_no` varchar(50) DEFAULT NULL,
+  `mode_of_receipt` varchar(50) DEFAULT 'By Road',
+  `qty_advised` int(11) DEFAULT NULL,
+  `qty_received` int(11) NOT NULL DEFAULT 0,
+  `breakage_shortage` int(11) DEFAULT 0,
+  `date_of_receipt` date NOT NULL,
+  `consignment_id` int(11) DEFAULT NULL,
+  `item_id` int(11) DEFAULT NULL,
+  `initial_bonding_date` date DEFAULT NULL,
+  `initial_bonding_expiry` date DEFAULT NULL,
+  `extended_bonding_date1` date DEFAULT NULL,
+  `extended_bonding_expiry1` date DEFAULT NULL,
+  `extended_bonding_date2` date DEFAULT NULL,
+  `extended_bonding_expiry2` date DEFAULT NULL,
+  `extended_bonding_date3` date DEFAULT NULL,
+  `extended_bonding_expiry3` date DEFAULT NULL,
+  `bank_guarantee` text DEFAULT NULL,
+  `relinquishment` tinyint(1) DEFAULT 0,
+  `duty_rate` decimal(15,4) DEFAULT NULL,
+  `value_rate` decimal(15,4) DEFAULT NULL,
+  `value` decimal(15,2) DEFAULT NULL,
+  `duty` decimal(15,2) DEFAULT NULL,
+  `sl_no_import_invoice` varchar(50) DEFAULT NULL,
+  `pkg_marks` text DEFAULT NULL,
+  `pkg_description` text DEFAULT NULL,
+  `transport_reg_no` varchar(50) DEFAULT NULL,
+  `date_of_order_section_60` date DEFAULT NULL,
+  `warehouse_code` varchar(50) DEFAULT NULL,
+  `warehouse_address` text DEFAULT NULL,
+  `customs_station` varchar(100) DEFAULT NULL,
+  `remarks` text DEFAULT NULL,
+  `branch_id` int(11) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `branch_id` (`branch_id`),
+  KEY `consignment_id` (`consignment_id`),
+  KEY `item_id` (`item_id`),
+  CONSTRAINT `inward_entries_ibfk_1` FOREIGN KEY (`consignment_id`) REFERENCES `consignments` (`id`),
+  CONSTRAINT `inward_entries_ibfk_2` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`),
+  CONSTRAINT `inward_entries_ibfk_3` FOREIGN KEY (`item_id`) REFERENCES `items` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE damaged_items (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    reported_date DATE NOT NULL,
-    inward_item_id INT NOT NULL,
-    qty_damaged INT NOT NULL,
-    reason TEXT,
-    reported_by VARCHAR(100),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (inward_item_id) REFERENCES inward_items(id)
-);
+-- 7. Inward Items (Detail)
+CREATE TABLE `inward_items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `inward_id` int(11) NOT NULL,
+  `item_id` int(11) DEFAULT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `qty` int(11) NOT NULL,
+  `unit` varchar(20) DEFAULT NULL,
+  `value` decimal(15,2) DEFAULT NULL,
+  `duty` decimal(15,2) DEFAULT NULL,
+  `qty_out` int(11) DEFAULT 0,
+  `bond_no` varchar(50) DEFAULT NULL,
+  `bond_date` date DEFAULT NULL,
+  `bond_expiry` date DEFAULT NULL,
+  `unit_value` decimal(15,4) DEFAULT NULL,
+  `value_amount` decimal(15,2) DEFAULT NULL,
+  `unit_duty` decimal(15,4) DEFAULT NULL,
+  `duty_amount` decimal(15,2) DEFAULT NULL,
+  `hsn_code` varchar(50) DEFAULT NULL,
+  `shelf_life_date` date DEFAULT NULL,
+  `duty_percent` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `inward_id` (`inward_id`),
+  KEY `item_id` (`item_id`),
+  CONSTRAINT `inward_items_ibfk_1` FOREIGN KEY (`inward_id`) REFERENCES `inward_entries` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `inward_items_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE shipping_bills (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    sb_no VARCHAR(50) NOT NULL UNIQUE,
-    consignment_id INT,
-    entered_date DATE,
-    status VARCHAR(20) DEFAULT 'DRAFT',
-    approved_by VARCHAR(100),
-    approved_at DATETIME,
-    remarks TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (consignment_id) REFERENCES consignments(id)
-);
+-- 8. Outward Entries
+CREATE TABLE `outward_entries` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `dispatch_date` date NOT NULL,
+  `consignment_id` int(11) DEFAULT NULL,
+  `inward_id` int(11) DEFAULT NULL,
+  `nature_of_removal` varchar(100) DEFAULT NULL,
+  `shipping_bill_no` varchar(50) DEFAULT NULL,
+  `shipping_bill_date` date DEFAULT NULL,
+  `flight_no` varchar(50) DEFAULT NULL,
+  `purpose` varchar(100) DEFAULT NULL,
+  `gate_pass_no` varchar(50) DEFAULT NULL,
+  `released_by` varchar(100) DEFAULT NULL,
+  `total_dispatched` int(11) DEFAULT 0,
+  `total_returned` int(11) DEFAULT 0,
+  `value` decimal(15,2) DEFAULT NULL,
+  `duty` decimal(15,2) DEFAULT NULL,
+  `registration_no_of_means_of_transport` varchar(50) DEFAULT NULL,
+  `otl_no` varchar(50) DEFAULT NULL,
+  `remarks` text DEFAULT NULL,
+  `branch_id` int(11) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  `shipping_bill_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `branch_id` (`branch_id`),
+  KEY `consignment_id` (`consignment_id`),
+  KEY `inward_id` (`inward_id`),
+  CONSTRAINT `outward_entries_ibfk_1` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`),
+  CONSTRAINT `outward_entries_ibfk_2` FOREIGN KEY (`consignment_id`) REFERENCES `consignments` (`id`),
+  CONSTRAINT `outward_entries_ibfk_3` FOREIGN KEY (`inward_id`) REFERENCES `inward_entries` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE shipping_bill_items (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    shipping_bill_id INT NOT NULL,
-    inward_item_id INT NOT NULL,
-    inward_id INT NOT NULL,
-    item_id INT,
-    description VARCHAR(255),
-    bond_no VARCHAR(50),
-    bond_expiry DATE,
-    qty INT NOT NULL,
-    unit_value DECIMAL(15,4),
-    value_amount DECIMAL(15,2),
-    unit_duty DECIMAL(15,4),
-    duty_amount DECIMAL(15,2),
-    FOREIGN KEY (shipping_bill_id) REFERENCES shipping_bills(id) ON DELETE CASCADE,
-    FOREIGN KEY (inward_item_id) REFERENCES inward_items(id),
-    FOREIGN KEY (inward_id) REFERENCES inward_entries(id)
-);
+-- 9. Outward Items
+CREATE TABLE `outward_items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `outward_id` int(11) NOT NULL,
+  `inward_item_id` int(11) NOT NULL,
+  `inward_id` int(11) DEFAULT NULL,
+  `item_id` int(11) DEFAULT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `qty_dispatched` int(11) NOT NULL,
+  `qty_returned_bag` int(11) DEFAULT 0,
+  `value` decimal(15,2) DEFAULT NULL,
+  `duty` decimal(15,2) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `outward_id` (`outward_id`),
+  KEY `inward_item_id` (`inward_item_id`),
+  KEY `inward_id` (`inward_id`),
+  KEY `item_id` (`item_id`),
+  CONSTRAINT `outward_items_ibfk_1` FOREIGN KEY (`outward_id`) REFERENCES `outward_entries` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `outward_items_ibfk_2` FOREIGN KEY (`inward_item_id`) REFERENCES `inward_items` (`id`),
+  CONSTRAINT `outward_items_ibfk_3` FOREIGN KEY (`inward_id`) REFERENCES `inward_entries` (`id`),
+  CONSTRAINT `outward_items_ibfk_4` FOREIGN KEY (`item_id`) REFERENCES `items` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE return_stock_entries (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    return_date DATE NOT NULL,
-    inward_id INT,
-    inward_item_id INT,
-    qty_returned INT NOT NULL,
-    remarks VARCHAR(255),
-    authorised_by VARCHAR(100),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (inward_id) REFERENCES inward_entries(id) ON DELETE SET NULL,
-    FOREIGN KEY (inward_item_id) REFERENCES inward_items(id) ON DELETE SET NULL
-);
+-- 10. Damaged Items
+CREATE TABLE `damaged_items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `reported_date` date NOT NULL,
+  `inward_item_id` int(11) NOT NULL,
+  `qty_damaged` int(11) NOT NULL,
+  `reason` text DEFAULT NULL,
+  `reported_by` varchar(100) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `inward_item_id` (`inward_item_id`),
+  CONSTRAINT `damaged_items_ibfk_1` FOREIGN KEY (`inward_item_id`) REFERENCES `inward_items` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 11. Shipping Bills
+CREATE TABLE `shipping_bills` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sb_no` varchar(50) NOT NULL,
+  `consignment_id` int(11) DEFAULT NULL,
+  `sb_date` date DEFAULT NULL,
+  `status` varchar(20) DEFAULT 'DRAFT',
+  `approved_by` varchar(100) DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `remarks` text DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  `flight_no` varchar(50) DEFAULT NULL,
+  `etd` date DEFAULT NULL,
+  `vt` varchar(50) DEFAULT NULL,
+  `port_of_discharge` varchar(100) DEFAULT NULL,
+  `country_of_destination` varchar(100) DEFAULT NULL,
+  `station` varchar(100) DEFAULT NULL,
+  `exporter_name` varchar(255) DEFAULT NULL,
+  `exporter_address` text DEFAULT NULL,
+  `entered_no` varchar(50) DEFAULT NULL,
+  `branch_id` int(11) DEFAULT NULL,
+  `unapproved_by` varchar(100) DEFAULT NULL,
+  `unapproved_at` datetime DEFAULT NULL,
+  `unapproved_remarks` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `sb_no` (`sb_no`),
+  KEY `consignment_id` (`consignment_id`),
+  CONSTRAINT `shipping_bills_ibfk_1` FOREIGN KEY (`consignment_id`) REFERENCES `consignments` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 12. Shipping Bill Items
+CREATE TABLE `shipping_bill_items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `shipping_bill_id` int(11) NOT NULL,
+  `inward_item_id` int(11) NOT NULL,
+  `inward_id` int(11) NOT NULL,
+  `item_id` int(11) DEFAULT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `bond_no` varchar(50) DEFAULT NULL,
+  `bond_expiry` date DEFAULT NULL,
+  `qty` int(11) NOT NULL,
+  `unit_value` decimal(15,4) DEFAULT NULL,
+  `value_amount` decimal(15,2) DEFAULT NULL,
+  `unit_duty` decimal(15,4) DEFAULT NULL,
+  `duty_amount` decimal(15,2) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `shipping_bill_id` (`shipping_bill_id`),
+  KEY `inward_item_id` (`inward_item_id`),
+  KEY `inward_id` (`inward_id`),
+  CONSTRAINT `shipping_bill_items_ibfk_1` FOREIGN KEY (`shipping_bill_id`) REFERENCES `shipping_bills` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `shipping_bill_items_ibfk_2` FOREIGN KEY (`inward_item_id`) REFERENCES `inward_items` (`id`),
+  CONSTRAINT `shipping_bill_items_ibfk_3` FOREIGN KEY (`inward_id`) REFERENCES `inward_entries` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 13. Return Stock Entries
+CREATE TABLE `return_stock_entries` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `return_date` date NOT NULL,
+  `inward_id` int(11) DEFAULT NULL,
+  `inward_item_id` int(11) DEFAULT NULL,
+  `qty_returned` int(11) NOT NULL,
+  `remarks` varchar(255) DEFAULT NULL,
+  `authorised_by` varchar(100) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  `branch_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `inward_id` (`inward_id`),
+  KEY `inward_item_id` (`inward_item_id`),
+  CONSTRAINT `return_stock_entries_ibfk_1` FOREIGN KEY (`inward_id`) REFERENCES `inward_entries` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `return_stock_entries_ibfk_2` FOREIGN KEY (`inward_item_id`) REFERENCES `inward_items` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

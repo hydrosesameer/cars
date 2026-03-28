@@ -11,26 +11,13 @@ router.get('/form-a', async (req, res) => {
             SELECT ii.id as inward_item_id, ii.description, ii.qty as qty_received, ii.value, ii.duty, ii.unit, ie.pkg_marks,
                    ie.pkg_description, ie.transport_reg_no, ie.otl_no, ie.qty_advised, ie.breakage_shortage,
                    ie.bank_guarantee, ie.relinquishment, ie.value_rate, ie.duty_rate,
-                   ie.be_no, ie.be_date, ie.bond_no, ie.bond_date, ie.shipping_bill_no as in_sb_no, ie.shipping_bill_date as in_sb_date,
+                   ie.be_no, ie.be_date, 
+                   COALESCE(ii.bond_no, ie.bond_no) as bond_no, 
+                   COALESCE(ii.bond_date, ie.bond_date) as bond_date,
+                   ie.shipping_bill_no as in_sb_no, ie.shipping_bill_date as in_sb_date,
                    ie.date_of_order_section_60, ie.date_of_receipt, ie.warehouse_code, ie.warehouse_address, ie.customs_station,
                    ie.initial_bonding_expiry, ie.extended_bonding_expiry1,
-                   c.name as consignment_name,
-                   (SELECT CONCAT('[', IFNULL(GROUP_CONCAT(
-                       JSON_OBJECT(
-                           'id', oe.id,
-                           'dispatch_date', oe.dispatch_date,
-                           'qty_dispatched', oi.qty_dispatched,
-                           'qty_returned_bag', oi.qty_returned_bag,
-                           'shipping_bill_no', oe.shipping_bill_no,
-                           'shipping_bill_date', oe.shipping_bill_date,
-                           'purpose', oe.purpose,
-                           'value', oi.value,
-                           'duty', oi.duty
-                       )
-                   ), ''), ']') 
-                   FROM outward_items oi
-                   JOIN outward_entries oe ON oi.outward_id = oe.id
-                   WHERE oi.inward_item_id = ii.id) as outward_json
+                   c.name as consignment_name
             FROM inward_items ii
             JOIN inward_entries ie ON ii.inward_id = ie.id
             LEFT JOIN consignments c ON ie.consignment_id = c.id
@@ -39,7 +26,6 @@ router.get('/form-a', async (req, res) => {
         let params = [];
         
         if (item_id) {
-            // Fetch description to match against inward_items that have null item_id but matching description
             const [[itemRecord]] = await db.query('SELECT description FROM items WHERE id = ?', [item_id]);
             const itemDesc = itemRecord ? itemRecord.description : null;
 
@@ -55,7 +41,7 @@ router.get('/form-a', async (req, res) => {
             }
         }
         if (bond_no) {
-            query += ' AND ie.bond_no LIKE ?';
+            query += ' AND COALESCE(ii.bond_no, ie.bond_no) LIKE ?';
             params.push(`%${bond_no}%`);
         }
         if (from_date) {
@@ -75,31 +61,52 @@ router.get('/form-a', async (req, res) => {
         
         const [entries] = await db.query(query, params);
         
-        // Parse outward JSON and calculate running balance
-        let runningBalance = 0;
-        const result = entries.map(entry => {
-            let outwardEntries = [];
-            if (entry.outward_json && entry.outward_json !== '[]') {
-                try { 
-                    outwardEntries = JSON.parse(entry.outward_json); 
-                } catch (e) { 
-                    console.error('JSON parse error for outward_json', e);
-                    outwardEntries = [];
-                }
-            }
+        // For each inward item, fetch all transactions (outward, damaged, return) separately
+        const result = [];
+        for (const entry of entries) {
+            const itemId = entry.inward_item_id;
             
-            const totalDispatched = outwardEntries.reduce((sum, o) => sum + (o.qty_dispatched || 0), 0);
-            const totalReturned = outwardEntries.reduce((sum, o) => sum + (o.qty_returned_bag || 0), 0);
-            runningBalance += entry.qty_received - totalDispatched + totalReturned;
+            // Fetch outward transactions
+            const [outwards] = await db.query(`
+                SELECT 'outward' as type, oe.id, oe.dispatch_date as date, oi.qty_dispatched as qty,
+                       IFNULL(oe.shipping_bill_no, '') as ref, oe.purpose, oi.value, oi.duty
+                FROM outward_items oi
+                JOIN outward_entries oe ON oi.outward_id = oe.id
+                WHERE oi.inward_item_id = ?
+                ORDER BY oe.dispatch_date, oi.id
+            `, [itemId]);
             
-            return {
+            // Fetch damaged transactions
+            const [damaged] = await db.query(`
+                SELECT 'damaged' as type, di.id, di.reported_date as date, di.qty_damaged as qty,
+                       'DAMAGED' as ref, 'Damage/Breakage' as purpose, 0 as value, 0 as duty
+                FROM damaged_items di
+                WHERE di.inward_item_id = ?
+                ORDER BY di.reported_date, di.id
+            `, [itemId]);
+            
+            // Fetch return transactions
+            const [returns] = await db.query(`
+                SELECT 'return' as type, rse.id, rse.return_date as date, -(rse.qty_returned) as qty,
+                       'RETURN' as ref, IFNULL(rse.remarks, 'Returned') as purpose, 0 as value, 0 as duty
+                FROM return_stock_entries rse
+                WHERE rse.inward_item_id = ?
+                ORDER BY rse.return_date, rse.id
+            `, [itemId]);
+            
+            // Merge and sort all transactions chronologically
+            const allTransactions = [...outwards, ...damaged, ...returns]
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            const totalDispatched = allTransactions.reduce((sum, o) => sum + Number(o.qty || 0), 0);
+            
+            result.push({
                 ...entry,
-                outward_entries: outwardEntries,
+                outward_entries: allTransactions,
                 total_dispatched: totalDispatched,
-                total_returned: totalReturned,
-                balance: runningBalance
-            };
-        });
+                qty_in_stock: entry.qty_received - totalDispatched
+            });
+        }
         
         res.json({
             report_type: 'FORM-A',
@@ -113,6 +120,7 @@ router.get('/form-a', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 // Form-B: Monthly summary of items with bonding expiry
 router.get('/form-b', async (req, res) => {
@@ -150,18 +158,18 @@ router.get('/form-b', async (req, res) => {
                 ) - COALESCE(
                     (SELECT SUM(di.qty_damaged) 
                      FROM damaged_items di 
-                     JOIN inward_items ii ON di.inward_item_id = ii.id 
-                     WHERE ii.inward_id = ie.id AND di.created_at <= ?), 0
+                     JOIN inward_items ii_inner ON di.inward_item_id = ii_inner.id 
+                     WHERE ii_inner.inward_id = ie.id AND di.created_at <= ?), 0
                 ) + COALESCE(
                     (SELECT SUM(rse.qty_returned) 
                      FROM return_stock_entries rse 
-                     JOIN inward_items ii ON rse.inward_item_id = ii.id 
-                     WHERE ii.inward_id = ie.id AND rse.created_at <= ?), 0
+                     JOIN inward_items ii_inner ON rse.inward_item_id = ii_inner.id 
+                     WHERE ii_inner.inward_id = ie.id AND rse.created_at <= ?), 0
                 )) as qty_in_stock,
                 SUM(ie.value) as total_value,
                 MAX(ie.be_no) as be_no,
                 MAX(ie.be_date) as be_date,
-                MAX(ie.bond_no) as bond_no,
+                MAX(COALESCE((SELECT bond_no FROM inward_items WHERE inward_id = ie.id LIMIT 1), ie.bond_no)) as bond_no,
                 MAX(ie.date_of_order_section_60) as date_of_order_section_60,
                 MAX(ie.sl_no_import_invoice) as sl_no_import_invoice,
                 MAX(ie.initial_bonding_expiry) as initial_bonding_expiry,
@@ -364,7 +372,13 @@ router.get('/stock-report', async (req, res) => {
     try {
         let query = `
             SELECT * FROM (
-                SELECT ii.*, ie.be_no, ie.be_date, ie.bond_no, ie.initial_bonding_expiry, ie.date_of_receipt,
+                SELECT ii.id, ii.inward_id, ii.item_id, ii.description, ii.qty, ii.unit, ii.value, ii.duty, 
+                       ii.qty_out, ii.bond_expiry as item_bond_expiry, ii.unit_value, ii.value_amount, 
+                       ii.unit_duty, ii.duty_amount, ii.hsn_code, ii.shelf_life_date, ii.duty_percent,
+                       ie.be_no, ie.be_date, 
+                       COALESCE(ii.bond_no, ie.bond_no) as bond_no,
+                       COALESCE(ii.bond_date, ie.bond_date) as bond_date,
+                       ie.initial_bonding_expiry, ie.date_of_receipt,
                        ie.extended_bonding_expiry1, ie.extended_bonding_expiry2, ie.extended_bonding_expiry3,
                        ie.consignment_id, ie.branch_id,
                        c.name as consignment_name,
@@ -438,7 +452,7 @@ router.get('/ledger', async (req, res) => {
                 FROM inward_items ii
                 JOIN inward_entries ie ON ii.inward_id = ie.id
                 LEFT JOIN consignments c ON ie.consignment_id = c.id
-                WHERE ie.bond_no = ?
+                WHERE COALESCE(ii.bond_no, ie.bond_no) = ?
                 
                 UNION ALL
                 
@@ -447,7 +461,7 @@ router.get('/ledger', async (req, res) => {
                 JOIN outward_entries oe ON oi.outward_id = oe.id
                 JOIN inward_items ii ON oi.inward_item_id = ii.id
                 JOIN inward_entries ie ON ii.inward_id = ie.id
-                WHERE ie.bond_no = ?
+                WHERE COALESCE(ii.bond_no, ie.bond_no) = ?
                 
                 UNION ALL
                 
@@ -455,7 +469,7 @@ router.get('/ledger', async (req, res) => {
                 FROM damaged_items di
                 JOIN inward_items ii ON di.inward_item_id = ii.id
                 JOIN inward_entries ie ON ii.inward_id = ie.id
-                WHERE ie.bond_no = ?
+                WHERE COALESCE(ii.bond_no, ie.bond_no) = ?
                 
                 UNION ALL
                 
@@ -470,7 +484,7 @@ router.get('/ledger', async (req, res) => {
         } else if (type === 'item') {
             const itemId = parseInt(id, 10);
             query = `
-                SELECT 'INWARD' as txn_type, ie.date_of_receipt as date, ii.qty as qty, ie.bond_no as reference, 'Initial Bonding' as remarks
+                SELECT 'INWARD' as txn_type, ie.date_of_receipt as date, ii.qty as qty, COALESCE(ii.bond_no, ie.bond_no) as reference, 'Initial Bonding' as remarks
                 FROM inward_items ii
                 JOIN inward_entries ie ON ii.inward_id = ie.id
                 WHERE ii.id = ?
@@ -521,11 +535,12 @@ router.get('/shipping-bill', async (req, res) => {
     try {
         let query = `
             SELECT oi.*, oe.dispatch_date, oe.flight_no, oe.shipping_bill_no, oe.shipping_bill_date,
-                   ie.bond_no, ie.be_no, 
+                   COALESCE(ii.bond_no, ie.bond_no) as bond_no, ie.be_no, 
                    c.name as consignment_name, c.code as consignment_code
             FROM outward_items oi
             JOIN outward_entries oe ON oi.outward_id = oe.id
-            JOIN inward_entries ie ON oi.inward_id = ie.id
+            JOIN inward_items ii ON oi.inward_item_id = ii.id
+            JOIN inward_entries ie ON ii.inward_id = ie.id
             LEFT JOIN consignments c ON oe.consignment_id = c.id
             WHERE 1=1
         `;

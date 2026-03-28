@@ -63,6 +63,14 @@
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Sidebar */
+  --sidebar-width: 260px;
+  --transition-sidebar: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsed-sidebar {
+  --sidebar-width: 76px;
 }
 
 /* Reset & Base */
@@ -101,6 +109,9 @@ body {
 .app-container {
   display: flex;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 /* ==========================================
@@ -108,7 +119,8 @@ body {
    ========================================== */
 
 .sidebar {
-  width: 260px;
+  width: var(--sidebar-width);
+  transition: var(--transition-sidebar);
   background: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
@@ -148,12 +160,61 @@ body {
 
 .logo-text span {
   display: block;
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.45);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-top: -2px;
+}
+
+/* Hide elements when collapsed */
+.collapsed-sidebar .logo-text,
+.collapsed-sidebar .nav-label,
+.collapsed-sidebar .nav-item span,
+.collapsed-sidebar .user-info,
+.collapsed-sidebar .btn-logout span {
+  display: none;
+}
+
+.sidebar-toggle {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+  margin-left: auto;
+}
+
+.sidebar-toggle:hover {
+  background: var(--bg-sidebar-hover);
+  color: #ffffff;
+}
+
+.collapsed-sidebar .sidebar-toggle {
+  margin-left: 0;
+  margin: 0 auto;
+}
+
+.collapsed-sidebar .sidebar-header {
+  flex-direction: column;
+  padding: 1.5rem 0.5rem;
+}
+
+.collapsed-sidebar .nav-item {
+  justify-content: center;
+  padding: 0.75rem 0;
+}
+
+.collapsed-sidebar .nav-item i {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.collapsed-sidebar .sidebar-footer {
+  padding: 1rem 0.5rem;
+}
+
+.collapsed-sidebar .user-profile {
+  justify-content: center;
 }
 
 /* Logo for style.css compat */
@@ -349,9 +410,13 @@ body {
 
 .main-content {
   flex: 1;
-  margin-left: 260px;
+  margin-left: var(--sidebar-width);
+  transition: var(--transition-sidebar);
   background: var(--bg-app);
   min-height: 100vh;
+  min-width: 0;
+  max-width: calc(100vw - var(--sidebar-width));
+  overflow-x: hidden;
 }
 
 /* Top Bar */
@@ -973,6 +1038,33 @@ textarea.form-control {
 
 .table-responsive {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  width: 100%;
+  max-width: 100%;
+  display: block;
+}
+
+#inward-items-billing-table {
+  min-width: 1400px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+#inward-items-billing-table th,
+#inward-items-billing-table td {
+  white-space: nowrap;
+}
+
+#inward-items-billing-table .form-control {
+  min-width: 100px;
+}
+
+#inward-items-billing-table td:first-child,
+#inward-items-billing-table th:first-child {
+  min-width: 300px;
 }
 
 /* ==========================================
@@ -1646,8 +1738,39 @@ textarea.form-control {
 
 /* A3 Landscape sizing for reports */
 .landscape-a3 {
-  max-width: 100%;
-  overflow-x: auto;
+  width: max-content;
+  min-width: 100%;
+  background: #ffffff;
+}
+
+@media print {
+  @page {
+    size: A3 landscape;
+    margin: 0;
+  }
+  .no-print { display: none !important; }
+  .table-responsive { 
+    overflow: visible !important; 
+    width: 100% !important;
+  }
+  .report-print-container.landscape-a3 {
+    width: 100% !important;
+    min-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  .report-table {
+    width: 100% !important;
+    min-width: 400mm !important; /* Ensure it spans the page */
+    table-layout: auto !important;
+    font-size: 6.5pt !important;
+  }
+  .report-table th, .report-table td {
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    padding: 2px !important;
+  }
 }
 
 /* Table with visible borders (used in reports) */
@@ -1663,28 +1786,35 @@ textarea.form-control {
 
 /* Report table specific styling */
 .report-table {
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   border-collapse: collapse;
   width: 100%;
   background: #ffffff;
+  table-layout: auto;
 }
 
 .report-table th,
 .report-table td {
-  padding: 4px 6px;
+  padding: 8px 10px;
   text-align: center;
   vertical-align: middle;
   border: 1px solid #d1d5db;
   background: #ffffff;
+  white-space: nowrap; /* Full column view: no wrapping on screen */
 }
 
 .report-table th {
-  background: #ffffff;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
+  background: #f8fafc;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.75rem;
+  color: #334155;
+}
+
+.report-table td.wrap-text {
   white-space: normal;
-  font-size: 0.68rem;
+  min-width: 200px;
 }
 
 .report-table .thead-light th {
@@ -1867,7 +1997,7 @@ textarea.form-control {
   /* Force landscape orientation */
   @page {
     size: landscape;
-    margin: 5mm;
+    margin: 0;
   }
 }
 

@@ -1733,6 +1733,10 @@ async function generateFormA() {
     const reportContainer = document.getElementById("forma-report-container");
     if (!reportContainer) return;
 
+    const itemSearch = document.getElementById("forma-item");
+    const itemText = itemSearch && itemSearch.selectedIndex > 0 ? itemSearch.options[itemSearch.selectedIndex].text : '';
+    const reportTitle = itemText ? `Form A / Bond Ledger - ${itemText}` : 'Form A';
+
     reportContainer.innerHTML = `
             <style>
                 .report-table th {
@@ -1742,27 +1746,36 @@ async function generateFormA() {
                 }
                 @media print {
                     @page { size: A3 landscape; margin: 5mm; }
-                    body, .main-content, .content-area, .card, .card-body, .card-header,
-                    #forma-report-container, #forma-report-container * {
-                        background: #ffffff !important;
-                        background-color: #ffffff !important;
+                    html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; }
+                    body * { visibility: hidden; }
+                    #forma-report-container, #forma-report-container * { visibility: visible; }
+                    #forma-report-container { 
+                        position: absolute; 
+                        left: 0; 
+                        top: 0; 
+                        width: 100% !important; 
+                        margin: 0 !important; 
+                        padding: 0 !important; 
+                        display: block !important;
                     }
-                    .report-table, .report-table th, .report-table td,
-                    .report-table thead, .report-table tbody {
-                        background: #ffffff !important;
-                        background-color: #ffffff !important;
-                        border: 1px solid #000 !important;
+                    .card { border: none !important; box-shadow: none !important; width: 100% !important; }
+                    .report-table { 
+                        width: 100% !important; 
+                        table-layout: auto !important; 
+                        border-collapse: collapse !important;
                     }
                     .report-table th, .report-table td {
-                        font-size: 5.5pt !important;
-                        padding: 1px 2px !important;
-                        min-width: 0 !important;
+                        font-size: 5pt !important;
+                        padding: 1px !important;
+                        white-space: normal !important;
+                        word-wrap: break-word !important;
+                        border: 1px solid #000 !important;
                     }
                 }
             </style>
             <div class="card">
                 <div class="card-header text-center" style="display: block !important; text-align: center !important; font-family: 'Arial Narrow', sans-serif; border-bottom: none; padding-bottom: 5px;">
-                    <h5 style="font-weight: bold; margin-bottom: 0; text-align: center;">Form A</h5>
+                    <h5 style="font-weight: bold; margin-bottom: 0; text-align: center;">${reportTitle}</h5>
                     <p style="margin-bottom: 0; font-size: 12px; text-align: center;">Form to be maintained by the warehouse licensee of the receipt, handling, storing and removal of the warehoused goods</p>
                     <p style="margin-bottom: 0; font-size: 12px; text-align: center;">(in terms of Circular No. 25/2016-Customs dated 08.06.2016)</p>
                     <p style="margin-bottom: 0; font-size: 14px; font-weight: bold; text-align: center;">Warehouse code:WHC NO:${data.warehouse_code}</p>
@@ -1773,8 +1786,8 @@ async function generateFormA() {
                         <thead style="font-stretch: condensed; font-family: 'Arial Narrow', sans-serif;">
                             <tr>
                                 <th colspan="11" class="text-center" style="font-weight: bold; text-transform: uppercase;">RECEIPTS</th>
-                                <th colspan="12" class="text-center" style="font-weight: bold; text-transform: uppercase;">HANDLING AND STORAGE</th>
-                                <th colspan="9" class="text-center" style="font-weight: bold; text-transform: uppercase;">REMOVAL</th>
+                                <th colspan="11" class="text-center" style="font-weight: bold; text-transform: uppercase;">HANDLING AND STORAGE</th>
+                                <th colspan="10" class="text-center" style="font-weight: bold; text-transform: uppercase;">REMOVAL</th>
                             </tr>
                             <tr class="text-center align-middle" style="text-transform: none !important;">
                                 <!-- Receipts (11 cols) -->
@@ -1790,7 +1803,7 @@ async function generateFormA() {
                                 <th>Date of Order<br>under Sec.<br>60(1)</th>
                                 <th>Warehouse Code<br>& Address (in case<br>of Bond to Bond<br>Transfer)</th>
 
-                                <!-- Handling (12 cols) -->
+                                <!-- Handling (11 cols) -->
                                 <th>Registration<br>No. of means<br>of Transport</th>
                                 <th>OTL No.</th>
                                 <th>Qty.<br>adviced</th>
@@ -1802,9 +1815,9 @@ async function generateFormA() {
                                 <th>Date of Expiry<br>of Initial<br>Bonding period</th>
                                 <th>Period<br>extended<br>upto</th>
                                 <th>Details of<br>Bank<br>Guarantee</th>
-                                <th>Relinquishment</th>
 
-                                <!-- Removal (9 cols) -->
+                                <!-- Removal (10 cols) -->
+                                <th>Ref No /<br>SB No</th>
                                 <th>Date &<br>Time of<br>Removal</th>
                                 <th>Purpose of<br>Removal</th>
                                 <th>Qty<br>Cleared</th>
@@ -1819,10 +1832,13 @@ async function generateFormA() {
                         <tbody>
                             ${data.entries.map(entry => {
                                 let rows = '';
-                                let balance = entry.qty_received; // Item level qty
+                                let balance = entry.qty_received; // Item level initial balance
                                 const removals = entry.outward_entries || [];
+                                // Calculate per-unit rates: value/qty and duty/qty
+                                const unitValueRate = entry.qty_received ? (Number(entry.value) / Number(entry.qty_received)).toFixed(3) : '-';
+                                const unitDutyRate = entry.qty_received ? (Number(entry.duty) / Number(entry.qty_received)).toFixed(3) : '-';
                                 
-                                // Helper for Receipt + Handling Columns (only show on first row)
+                                // Helper for Receipt + Handling Columns
                                 const receiptCols = (isFirst) => isFirst ? `
                                     <td>${entry.be_no}<br>${formatDate(entry.be_date)}</td>
                                     <td>${entry.customs_station || 'COK'}</td>
@@ -1830,7 +1846,7 @@ async function generateFormA() {
                                     <td>${entry.description}</td>
                                     <td>${entry.pkg_description || '-'}</td>
                                     <td>${entry.pkg_marks || '-'}</td>
-                                    <td>${entry.qty_received}<br>${entry.unit || 'PCS'}</td>
+                                    <td>${entry.unit || 'PCS'}</td>
                                     <td>${formatCurrency(entry.value)}</td>
                                     <td>${formatCurrency(entry.duty)}</td>
                                     <td>${formatDate(entry.date_of_order_section_60)}</td>
@@ -1848,62 +1864,48 @@ async function generateFormA() {
                                     <td>${formatDate(entry.initial_bonding_expiry)}</td>
                                     <td>${formatDate(entry.extended_bonding_expiry1)}</td>
                                     <td>${entry.bank_guarantee || '-'}</td>
-                                    <td>${entry.relinquishment || '0'}</td>
                                 ` : `
                                     <td colspan="11" style="border: none;"></td>
-                                    <td colspan="12" style="border: none;"></td>
+                                    <td colspan="11" style="border: none;"></td>
                                 `;
 
-                                if (removals.length === 0) {
-                                    // No removals - show receipt and full balance
-                                    return `<tr>
-                                        ${receiptCols(true)}
-                                        <td>-</td>
-                                        <td>-</td>
-                                        <td>-</td>
-                                        <td>-</td>
-                                        <td>-</td>
-                                        <td>-</td>
-                                        <td><strong>${balance}</strong></td>
-                                        <td>${entry.value_rate ? Number(entry.value_rate).toFixed(2) : '-'}</td>
-                                        <td>${entry.duty_rate ? Number(entry.duty_rate).toFixed(2) : '-'}</td>
-                                    </tr>`;
-                                }
+                                // 1. Always show Opening Balance Row
+                                rows += `<tr>
+                                    ${receiptCols(true)}
+                                    <td>${entry.relinquishment || '0'}</td>
+                                    <td>${formatDate(entry.be_date || entry.date_of_receipt)}</td>
+                                    <td>0</td>
+                                    <td>0</td>
+                                    <td>${formatCurrency(entry.value)}</td>
+                                    <td>${formatCurrency(entry.duty)}</td>
+                                    <td>0</td>
+                                    <td><strong>${balance}</strong></td>
+                                    <td>${unitValueRate}</td>
+                                    <td>${unitDutyRate}</td>
+                                </tr>`;
 
-                                // Iterate removals
-                                removals.forEach((out, idx) => {
-                                    balance -= (out.qty_dispatched || 0);
+                                // 2. Iterate all transactions (outward, damaged, return)
+                                removals.forEach((out) => {
+                                    balance -= (out.qty || 0);
                                     rows += `<tr>
-                                        ${receiptCols(idx === 0)}
-                                        <td>${formatDate(out.dispatch_date)}</td>
+                                        ${receiptCols(false)}
+                                        <td>${out.ref || '-'}</td>
+                                        <td>${formatDate(out.date)}</td>
                                         <td>${out.purpose}</td>
-                                        <td>${out.qty_dispatched}</td>
-                                        <td>${formatCurrency(out.value)}</td>
-                                        <td>${formatCurrency(out.duty)}</td>
+                                        <td>${Math.abs(out.qty)}</td>
+                                        <td>${out.value ? formatCurrency(out.value) : '0.00'}</td>
+                                        <td>${out.duty ? formatCurrency(out.duty) : '0.00'}</td>
                                         <td>-</td>
                                         <td><strong>${balance}</strong></td>
-                                        <td>${entry.value_rate || '-'}</td>
-                                        <td>${entry.duty_rate || '-'}</td>
+                                        <td>${unitValueRate}</td>
+                                        <td>${unitDutyRate}</td>
                                     </tr>`;
                                 });
                                 return rows;
                             }).join("")}
                         </tbody>
-                        <tfoot style="font-weight: bold; background-color: #f8f9fa;">
-                            <tr class="text-center">
-                                <td colspan="11">GRAND TOTAL</td>
-                                <td colspan="12"></td>
-                                <td></td>
-                                <td></td>
-                                <td>${data.entries.reduce((sum, e) => sum + (e.outward_entries?.reduce((s, o) => s + Number(o.qty_dispatched || 0), 0) || 0), 0)}</td>
-                                <td>${formatCurrency(data.entries.reduce((sum, e) => sum + (e.outward_entries?.reduce((s, o) => s + Number(o.value || 0), 0) || 0), 0))}</td>
-                                <td>${formatCurrency(data.entries.reduce((sum, e) => sum + (e.outward_entries?.reduce((s, o) => s + Number(o.duty || 0), 0) || 0), 0))}</td>
-                                <td></td>
-                                <td>${data.entries.reduce((sum, e) => sum + Number(e.qty_in_stock || 0), 0)}</td>
-                                <td></td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
+
+
                     </table>
                 </div>
             </div>
@@ -2053,6 +2055,7 @@ async function generateFormB() {
 
 var sbAvailableItems = [];
 var sbSelectedItems = [];
+var currentShippingBillId = null;
 
 async function loadShippingBillsListPage() {
   const user = getAuthUser();
@@ -2060,29 +2063,52 @@ async function loadShippingBillsListPage() {
   try {
     const bills = await apiCall(`/shipping-bills${branchId ? `?branch_id=${branchId}` : ''}`);
     const canApprove = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'].includes(user.role);
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role);
 
-    paginateTable('shipping-bills-table', bills, (e) => `
+    paginateTable('shipping-bills-table', bills, (e) => {
+      const isUnapproved = e.status === 'DRAFT' && e.unapproved_remarks;
+      const statusText = isUnapproved ? 'UNAPPROVED' : e.status;
+      const statusClass = isUnapproved ? 'badge-danger' : getStatusBadge(e.status);
+
+      return `
       <tr>
-        <td><strong>${e.shipping_bill_no}</strong></td>
-        <td>${formatDate(e.shipping_bill_date)}</td>
+        <td><strong>${e.sb_no}</strong></td>
+        <td>${formatDate(e.sb_date)}</td>
         <td>${e.flight_no || '-'}</td>
         <td>${e.consignment_name || '-'}</td>
         <td>${e.item_count || 0}</td>
         <td class="stock-medium">${(e.total_qty || 0).toLocaleString()}</td>
         <td>₹${(e.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
         <td>₹${(e.total_duty || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-        <td><span class="badge ${getStatusBadge(e.status)}">${e.status}</span></td>
+        <td>
+          <span class="badge ${statusClass}">${statusText}</span>
+        </td>
+        <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${e.unapproved_remarks || e.remarks || ''}">
+          ${e.unapproved_remarks || e.remarks || '-'}
+        </td>
         <td>
           <div class="action-btns">
             ${(e.status === 'DRAFT' && canApprove) ? `<button class="action-btn success" onclick="approveShippingBill(${e.id})" title="Approve"><i class="fas fa-check"></i></button>` : ''}
-            ${e.status === 'DRAFT' ? `<button class="action-btn primary" onclick="window.location.href='shipping-bill-entry.html?id=${e.id}'" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
+            ${(e.status === 'DRAFT' && isAdmin) ? `<button class="action-btn warning" onclick="rejectShippingBill(${e.id})" title="Not Approved"><i class="fas fa-times-circle"></i></button>` : ''}
+            ${(e.status === 'APPROVED' && isAdmin) ? `<button class="action-btn warning" onclick="unapproveShippingBill(${e.id})" title="Unapprove"><i class="fas fa-undo"></i></button>` : ''}
+            ${(e.status === 'DRAFT') ? `<button class="action-btn primary" onclick="window.location.href='shipping-bill-entry.html?id=${e.id}'" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
             <button class="action-btn info" onclick="viewShippingBill(${e.id})" title="View Details"><i class="fas fa-eye"></i></button>
             <button class="action-btn secondary" onclick="printShippingBill(${e.id})" title="Print"><i class="fas fa-print"></i></button>
-            ${e.status === 'DRAFT' ? `<button class="action-btn danger" onclick="deleteShippingBill(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+            ${(() => {
+                if (e.status !== 'DRAFT' || !isAdmin) return '';
+                const createdDate = new Date(e.created_at);
+                const now = new Date();
+                const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
+                if (diffDays <= 3) {
+                    return `<button class="action-btn danger" onclick="deleteShippingBill(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
+                }
+                return '';
+            })()}
           </div>
         </td>
       </tr>
-    `, 10);
+    `;
+    }, 10);
   } catch (error) {
     console.error("Error loading shipping bills:", error);
   }
@@ -2098,6 +2124,9 @@ function getStatusBadge(status) {
 }
 
 async function initShippingBillEntry() {
+  const params = new URLSearchParams(window.location.search);
+  const editId = params.get('id');
+
   if (consignments.length === 0) consignments = await apiCall("/consignments");
 
   document.getElementById("sb-consignment").innerHTML =
@@ -2107,12 +2136,48 @@ async function initShippingBillEntry() {
       .map((c) => `<option value="${c.id}">${c.name} (${c.code || c.airline_code || ""})</option>`)
       .join("");
 
-  // Set default date to today
-  document.getElementById("sb-date").value = new Date()
-    .toISOString()
-    .split("T")[0];
+  // Populate Country dropdown from countries master
+  let countriesList = [];
+  try {
+    countriesList = await apiCall('/countries');
+    const countrySelect = document.getElementById('sb-country');
+    if (countrySelect) {
+      countrySelect.innerHTML = `<option value="">Select Country</option>` +
+        countriesList.map(c => `<option value="${c.code}" data-port="${c.port_of_discharge || ''}">${c.name} (${c.code})</option>`).join('');
+      
+      // Auto-fill port of discharge on country selection
+      countrySelect.addEventListener('change', (e) => {
+        const selected = e.target.options[e.target.selectedIndex];
+        const countryCode = e.target.value;
+        const defaultPort = selected ? selected.getAttribute('data-port') : '';
+        
+        const user = getAuthUser();
+        const airportCode = user.airport_code;
 
-  // Listen to Consignment Change to dynamically fetch stock
+        if (airportCode && countryCode) {
+          // Format as COK-SA-COK
+          document.getElementById('sb-port').value = `${airportCode}-${countryCode}-${airportCode}`;
+        } else if (defaultPort) {
+          document.getElementById('sb-port').value = defaultPort;
+        }
+      });
+    }
+  } catch (err) { console.log('Countries load:', err.message); }
+
+  // Helper to populate flight dropdown for a given airline
+  async function populateFlights(consignment_id, selectedFlight) {
+    const flightSelect = document.getElementById('sb-flight');
+    if (!flightSelect) return;
+    flightSelect.innerHTML = '<option value="">Select Flight</option>';
+    if (!consignment_id) return;
+    try {
+      const flights = await apiCall(`/consignments/flights/list?consignment_id=${consignment_id}`);
+      flightSelect.innerHTML = '<option value="">Select Flight</option>' +
+        flights.map(f => `<option value="${f.flight_no}" ${f.flight_no === selectedFlight ? 'selected' : ''}>${f.flight_no}</option>`).join('');
+    } catch (err) { console.log('Flights load:', err.message); }
+  }
+
+  // Listen to Consignment Change to dynamically fetch stock + flights
   const consignmentSelect = document.getElementById("sb-consignment");
   if (consignmentSelect) {
     consignmentSelect.addEventListener('change', async (e) => {
@@ -2121,18 +2186,80 @@ async function initShippingBillEntry() {
       const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
       if (consignment_id) {
           sbAvailableItems = await apiCall(`/outward/available/items?consignment_id=${consignment_id}${branchId ? `&branch_id=${branchId}` : ''}`);
+          await populateFlights(consignment_id, null);
       } else {
           sbAvailableItems = [];
+          document.getElementById('sb-flight').innerHTML = '<option value="">Select Flight</option>';
       }
       // Reset selected items when airline changes
-      sbSelectedItems = [{ inward_item_id: null, description: "", qty: "", available_qty: "", bond_expiry: "", bond_no: "", unit_value: "", value_amount: 0, unit_duty: "", duty_amount: 0 }];
-      renderSBItems();
+      if (!currentShippingBillId) {
+          sbSelectedItems = [{ inward_item_id: null, description: "", qty: "", available_qty: "", bond_expiry: "", bond_no: "", unit_value: "", value_amount: 0, unit_duty: "", duty_amount: 0 }];
+          renderSBItems();
+      }
     });
   }
 
-  // Initialize with no items available until an airline is selected
-  sbAvailableItems = [];
-  sbSelectedItems = [{ inward_item_id: null, description: "", qty: "", available_qty: "", bond_expiry: "", bond_no: "", unit_value: "", value_amount: 0, unit_duty: "", duty_amount: 0 }];
+  if (editId) {
+    currentShippingBillId = editId;
+    document.getElementById("sb-form-title").textContent = "Edit Shipping Bill";
+    const saveBtn = document.querySelector('button[onclick="saveShippingBill()"]');
+    if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save"></i> Update Shipping Bill';
+
+    try {
+      const bill = await apiCall(`/shipping-bills/${editId}`);
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || "";
+      };
+
+      setVal("sb-no", bill.sb_no);
+      setVal("sb-date", bill.sb_date ? bill.sb_date.split('T')[0] : "");
+      setVal("sb-consignment", bill.consignment_id);
+      // Populate flight dropdown for this airline before setting flight value
+      if (bill.consignment_id) {
+        await populateFlights(bill.consignment_id, bill.flight_no);
+      }
+      setVal("sb-station", bill.station);
+      setVal("sb-etd", bill.etd);
+      setVal("sb-vt", bill.vt);
+      setVal("sb-remarks", bill.remarks);
+      setVal("sb-port", bill.port_of_discharge);
+      setVal("sb-country", bill.country_of_destination);
+
+      // Fetch available items for this airline to populate dropdowns
+      const user = getAuthUser();
+      const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+      sbAvailableItems = await apiCall(`/outward/available/items?consignment_id=${bill.consignment_id}${branchId ? `&branch_id=${branchId}` : ''}`);
+
+      // Map existing items
+      sbSelectedItems = bill.items.map(item => ({
+        id: item.id, // Primary key of shipping_bill_items
+        inward_item_id: item.inward_item_id,
+        inward_id: item.inward_id,
+        item_id: item.item_id,
+        description: item.description,
+        qty: item.qty,
+        available_qty: item.available_qty || item.qty, 
+        bond_expiry: item.bond_expiry ? item.bond_expiry.split('T')[0] : "",
+        initial_bonding_expiry: item.bond_expiry, // For helper compatibility
+        bond_no: item.bond_no || "",
+        unit_value: (parseFloat(item.value_amount) / (parseInt(item.qty) || 1)).toFixed(4),
+        value_amount: parseFloat(item.value_amount || 0),
+        unit_duty: (parseFloat(item.duty_amount) / (parseInt(item.qty) || 1)).toFixed(4),
+        duty_amount: parseFloat(item.duty_amount || 0)
+      }));
+
+    } catch (err) {
+      showToast("Error loading shipping bill: " + err.message, "error");
+    }
+  } else {
+    // New Mode
+    currentShippingBillId = null;
+    document.getElementById("sb-date").value = new Date().toISOString().split("T")[0];
+    sbAvailableItems = [];
+    sbSelectedItems = [{ inward_item_id: null, description: "", qty: "", available_qty: "", bond_expiry: "", bond_no: "", unit_value: "", value_amount: 0, unit_duty: "", duty_amount: 0 }];
+  }
+
   renderSBItems();
 }
 
@@ -2486,44 +2613,59 @@ function removeSBItem(idx) {
 
 async function saveShippingBill() {
   const sbNo = document.getElementById("sb-no").value.trim();
-  const sbDate = document.getElementById("sb-date").value;
+  // Ensure sbDate is correctly captured even if flatpickr hasn't synced to the hidden input yet.
+  // Accessing the flatpickr instance directly is the most reliable way.
+  const sbDateInput = document.getElementById("sb-date");
+  const sbDate = sbDateInput._flatpickr ? sbDateInput._flatpickr.selectedDates[0] ? sbDateInput._flatpickr.formatDate(sbDateInput._flatpickr.selectedDates[0], "Y-m-d") : "" : sbDateInput.value;
   const consignmentId = document.getElementById("sb-consignment").value;
 
   if (!sbNo) { showToast("Shipping Bill No is required", "error"); return; }
-  if (!sbDate) { showToast("Date is required", "error"); return; }
-  if (sbSelectedItems.length === 0) { showToast("Add at least one item", "error"); return; }
+  if (!sbDate) { showToast("Shipping Bill Date is required", "error"); return; }
+  if (!consignmentId) { showToast("Airline selection is required", "error"); return; }
 
-  const payload = {
-    shipping_bill_no: sbNo,
-    shipping_bill_date: sbDate,
-    consignment_id: consignmentId || null,
-    flight_no: document.getElementById("sb-flight").value.trim() || null,
-    etd: document.getElementById("sb-etd").value.trim() || null,
-    vt: document.getElementById("sb-vt").value.trim() || null,
-    station: document.getElementById("sb-station").value.trim() || "COCHIN",
-    port_of_discharge: document.getElementById("sb-port").value.trim() || "COK/KWI/COK",
-    country_of_destination: document.getElementById("sb-country").value.trim() || "KWI",
-    entered_no: document.getElementById("sb-entered-no").value.trim() || null,
-    items: sbSelectedItems.map((i) => ({
+  const items = sbSelectedItems
+    .filter((i) => i.inward_item_id && i.qty > 0)
+    .map((i) => ({
+      id: i.id || null, // Include item ID for updates
       inward_item_id: i.inward_item_id,
       inward_id: i.inward_id,
       item_id: i.item_id,
       description: i.description,
-      bond_no: i.bond_no,
-      bond_expiry: i.bond_expiry || null,
       qty: i.qty,
-      unit_value: i.unit_value,
       value_amount: i.value_amount,
-      unit_duty: i.unit_duty,
       duty_amount: i.duty_amount,
-    })),
-    branch_id: getAuthUser().branch_id
+    }));
+
+  if (items.length === 0) {
+    showToast("At least one item with quantity > 0 is required", "error");
+    return;
+  }
+
+  const user = getAuthUser();
+  const payload = {
+    sb_no: sbNo,
+    sb_date: sbDate,
+    consignment_id: consignmentId,
+    flight_no: document.getElementById("sb-flight").value,
+    station: document.getElementById("sb-station").value,
+    etd: document.getElementById("sb-etd").value,
+    vt: document.getElementById("sb-vt").value,
+    remarks: document.getElementById("sb-remarks") ? document.getElementById("sb-remarks").value : "",
+    port_of_discharge: document.getElementById("sb-port") ? document.getElementById("sb-port").value : "",
+    country_of_destination: document.getElementById("sb-country") ? document.getElementById("sb-country").value : "",
+    items: items,
+    branch_id: user.branch_id,
+    user_role: user.role,
+    user_branch_id: user.branch_id
   };
 
   try {
-    const result = await apiCall("/shipping-bills", "POST", payload);
-    showToast(result.message || "Shipping bill saved!", "success");
-    window.location.href = "shipping-bill.html";
+    const url = currentShippingBillId ? `/shipping-bills/${currentShippingBillId}` : "/shipping-bills";
+    const method = currentShippingBillId ? "PUT" : "POST";
+    
+    await apiCall(url, method, payload);
+    showToast(`Shipping Bill ${currentShippingBillId ? 'updated' : 'saved'} successfully`, "success");
+    setTimeout(() => (window.location.href = "shipping-bill.html"), 800);
   } catch (error) {
     showToast(error.message || "Error saving shipping bill", "error");
   }
@@ -2546,11 +2688,125 @@ async function approveShippingBill(id) {
 }
 
 
-async function deleteShippingBill(id) {
-  if (!confirm("Delete this draft shipping bill?")) return;
+
+async function unapproveShippingBill(id) {
+  // Create a styled modal for remarks
+  const modalHtml = `
+    <div class="modal-overlay" id="unapprove-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;">
+      <div class="card" style="width:500px;max-width:90%;padding:2rem;">
+        <h3 style="margin-bottom:1rem;color:var(--danger-color,#e74c3c);">
+          <i class="fas fa-exclamation-triangle"></i> Unapprove Shipping Bill
+        </h3>
+        <p style="margin-bottom:1rem;color:var(--text-secondary);">Please provide a reason for unapproving this shipping bill. This will delete associated outward entries and revert the bill to DRAFT status.</p>
+        <div class="form-group" style="margin-bottom:1.5rem;">
+          <label class="form-label">Reason for Unapproval *</label>
+          <textarea id="unapprove-remarks" class="form-control" rows="3" placeholder="Enter reason..." style="resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;">
+          <button class="btn" onclick="document.getElementById('unapprove-modal').remove()" style="background:var(--bg-tertiary);color:var(--text-primary);">Cancel</button>
+          <button class="btn btn-danger" id="btn-confirm-unapprove">Confirm Unapproval</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  setTimeout(() => {
+    const m = document.getElementById('unapprove-modal');
+    if (m) m.classList.add('active');
+  }, 10);
+
+  document.getElementById('btn-confirm-unapprove').addEventListener('click', async () => {
+    const remarks = document.getElementById('unapprove-remarks').value.trim();
+    if (!remarks) {
+      showToast("Remarks are mandatory for unapproval.", "error");
+      return;
+    }
+    document.getElementById('unapprove-modal').remove();
+    try {
+      const user = getAuthUser();
+      await apiCall(`/shipping-bills/${id}/unapprove`, "POST", {
+        unapproved_by: user.name || user.username,
+        remarks,
+        user_role: user.role,
+        user_branch_id: user.branch_id
+      });
+      showToast("Shipping bill unapproved successfully.", "success");
+      loadShippingBillsListPage();
+    } catch (error) {
+      showToast(error.message || "Error unapproving shipping bill", "error");
+    }
+  });
+}
+
+async function rejectShippingBill(id) {
+  const modalHtml = `
+    <div class="modal-overlay" id="reject-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;">
+      <div class="card" style="width:500px;max-width:90%;padding:2rem;">
+        <h3 style="margin-bottom:1rem;color:var(--warning-color,#f39c12);">
+          <i class="fas fa-times-circle"></i> Not Approved - Shipping Bill
+        </h3>
+        <p style="margin-bottom:1rem;color:var(--text-secondary);">Please provide a reason for not approving this shipping bill. The staff will be able to edit and resubmit.</p>
+        <div class="form-group" style="margin-bottom:1.5rem;">
+          <label class="form-label">Reason *</label>
+          <textarea id="reject-remarks" class="form-control" rows="3" placeholder="Enter reason for not approving..." style="resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;">
+          <button class="btn" onclick="document.getElementById('reject-modal').remove()" style="background:var(--bg-tertiary);color:var(--text-primary);">Cancel</button>
+          <button class="btn btn-warning" id="btn-confirm-reject">Submit</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  setTimeout(() => {
+    const m = document.getElementById('reject-modal');
+    if (m) m.classList.add('active');
+  }, 10);
+
+  document.getElementById('btn-confirm-reject').addEventListener('click', async () => {
+    const remarks = document.getElementById('reject-remarks').value.trim();
+    if (!remarks) {
+      showToast("Remarks are mandatory.", "error");
+      return;
+    }
+    document.getElementById('reject-modal').remove();
+    try {
+      const user = getAuthUser();
+      await apiCall(`/shipping-bills/${id}/reject`, "POST", {
+        rejected_by: user.name || user.username,
+        remarks,
+        user_role: user.role,
+        user_branch_id: user.branch_id
+      });
+      showToast("Shipping bill marked as Not Approved.", "success");
+      loadShippingBillsListPage();
+    } catch (error) {
+      showToast(error.message || "Error rejecting shipping bill", "error");
+    }
+  });
+}
+
+function deleteShippingBill(id) {
+    const body = `
+        <div style="text-align: center; padding: 20px;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: var(--danger-color); margin-bottom: 20px;"></i>
+            <h3 style="margin-bottom: 10px;">Confirm Deletion</h3>
+            <p>Are you sure you want to delete this draft shipping bill?</p>
+            <p style="color: #666; font-size: 0.9rem; margin-top: 5px;">This action cannot be undone.</p>
+        </div>
+    `;
+    openModal("Delete Shipping Bill", body, `
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="confirmDeleteShippingBill(${id})">Delete Now</button>
+    `, "active");
+}
+
+async function confirmDeleteShippingBill(id) {
   try {
-    await apiCall(`/shipping-bills/${id}`, "DELETE");
+    const user = getAuthUser();
+    await apiCall(`/shipping-bills/${id}`, "DELETE", { user_role: user.role });
     showToast("Shipping bill deleted", "success");
+    closeModal();
     await loadShippingBillsListPage();
   } catch (error) {
     showToast(error.message || "Error deleting", "error");
@@ -2560,6 +2816,7 @@ async function deleteShippingBill(id) {
 async function viewShippingBill(id) {
   try {
     const bill = await apiCall(`/shipping-bills/${id}`);
+    const user = getAuthUser();
     const items = bill.items || [];
     const totalQty = items.reduce((s, i) => s + (parseInt(i.qty) || 0), 0);
     const totalValue = items.reduce((s, i) => s + (parseFloat(i.value_amount) || 0), 0);
@@ -2570,13 +2827,13 @@ async function viewShippingBill(id) {
     modal.innerHTML = `
       <div class="modal" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
         <div class="modal-header">
-          <h2>Shipping Bill: ${bill.shipping_bill_no}</h2>
+          <h2>Shipping Bill: ${bill.sb_no}</h2>
           <span>${getStatusBadge(bill.status)}</span>
           <button class="icon-btn" onclick="this.closest('.modal-overlay').remove()"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
           <div class="form-grid-3" style="margin-bottom: 16px;">
-            <div><strong>Date:</strong> ${bill.shipping_bill_date}</div>
+            <div><strong>Date:</strong> ${bill.sb_date}</div>
             <div><strong>Flight:</strong> ${bill.flight_no || "-"}</div>
             <div><strong>Airline:</strong> ${bill.consignment_name || "-"}</div>
             <div><strong>Station:</strong> ${bill.station || "-"}</div>
@@ -2593,7 +2850,8 @@ async function viewShippingBill(id) {
           ${bill.approved_by ? `<p style="margin-top:12px"><strong>Approved by:</strong> ${bill.approved_by} at ${bill.approved_at || ""}</p>` : ""}
         </div>
         <div class="modal-footer">
-          ${bill.status === "DRAFT" ? `<button class="btn btn-success" onclick="this.closest('.modal-overlay').remove(); approveShippingBill(${bill.id})"><i class="fas fa-check"></i> Approve</button>` : ""}
+          ${(bill.status === "DRAFT" && ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'].includes(user.role)) ? `<button class="btn btn-success" onclick="this.closest('.modal-overlay').remove(); approveShippingBill(${bill.id})"><i class="fas fa-check"></i> Approve</button>` : ""}
+          ${(bill.status === "APPROVED" && ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role)) ? `<button class="btn btn-warning" onclick="this.closest('.modal-overlay').remove(); unapproveShippingBill(${bill.id})"><i class="fas fa-undo"></i> Unapprove</button>` : ""}
           <button class="btn btn-secondary" onclick="printShippingBill(${bill.id})"><i class="fas fa-print"></i> Print</button>
           <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
         </div>
@@ -2647,7 +2905,7 @@ async function printShippingBill(id) {
     const airlineName = bill.consignment_name || '';
     const printWin = window.open("", "_blank");
     printWin.document.write(`<!DOCTYPE html><html><head>
-    <title>Shipping Bill - ${bill.shipping_bill_no}</title>
+    <title>Shipping Bill - ${bill.sb_no}</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font-family: 'Times New Roman', serif; font-size: 11px; padding: 15px; line-height: 1.3; color: #000; }
@@ -2722,7 +2980,7 @@ async function printShippingBill(id) {
         <div class="title-right">DUTY FREE GOODS</div>
         <table>
           <tr><td>FLT. NO.</td><td>: ${bill.flight_no || ''}</td></tr>
-          <tr><td>DATE</td><td>: ${fmtDate(bill.shipping_bill_date)}</td></tr>
+          <tr><td>DATE</td><td>: ${fmtDate(bill.sb_date)}</td></tr>
           <tr><td>ETD</td><td>: ${bill.etd || ''}</td></tr>
           <tr><td>VT</td><td>: ${bill.vt || ''}</td></tr>
         </table>
@@ -2777,21 +3035,13 @@ async function printShippingBill(id) {
       </thead>
       <tbody>
         ${itemRows}
-        <tr class="total-row" style="background: none;">
-          <td colspan="4" style="text-align:right; padding-right:8px;">TOTAL</td>
-          <td class="r">${totalQty}</td>
-          <td></td>
-          <td class="r">${totalValue.toFixed(2)}</td>
-          <td></td>
-          <td class="r">${totalDuty.toFixed(2)}</td>
-        </tr>
       </tbody>
     </table>
 
     <!-- ===== ENTERED NO ===== -->
     <div class="entered-section">
       <div class="entered-left">
-        <b>Entered No:</b>&emsp;${bill.entered_no || '___________'}&emsp;&emsp;${fmtDate(bill.entered_date) || fmtDate(bill.shipping_bill_date)}
+        <b>Entered No:</b>&emsp;${bill.entered_no || '___________'}&emsp;&emsp;${fmtDate(bill.entered_date) || fmtDate(bill.sb_date)}
       </div>
       <div class="entered-right">
         Permitted free of duty under Section 87 of the New<br>
@@ -2901,9 +3151,11 @@ async function loadDetailedStockReport() {
   if (toDate) params.append('to_date', toDate);
   if (expiryDate) params.append('expiry_date', expiryDate);
 
+  const consignmentEl = document.getElementById("stock-filter-consignment");
   // Load consignments for filter if not yet done
   if (consignments.length === 0) {
-    consignments = await apiCall("/consignments");
+    const res = await apiCall("/consignments?type=AIRLINE");
+    consignments = Array.isArray(res) ? res : [];
     if (consignmentEl) {
       consignmentEl.innerHTML =
         '<option value="">All Consignments</option>' +
@@ -2913,6 +3165,10 @@ async function loadDetailedStockReport() {
               `<option value="${c.id}" ${consignmentId == c.id ? "selected" : ""}>${c.name}</option>`,
           )
           .join("");
+      
+      if (consignmentEl.tomselect) {
+        consignmentEl.tomselect.sync();
+      }
     }
   }
 
@@ -2922,9 +3178,16 @@ async function loadDetailedStockReport() {
     try {
       const user = getAuthUser();
       const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
+      console.log(`Fetching unique bond numbers for branch: ${branchId}`);
       const bondNumbers = await apiCall(`/reports/unique-bond-numbers${branchId ? `?branch_id=${branchId}` : ''}`);
+      console.log("Bond Numbers received:", bondNumbers);
       bondEl.innerHTML = '<option value="">All Bond Numbers</option>' + 
         bondNumbers.map(b => `<option value="${b}" ${bondNo == b ? "selected" : ""}>${b}</option>`).join("");
+      
+      // Sync TomSelect if it exists
+      if (bondEl.tomselect) {
+        bondEl.tomselect.sync();
+      }
     } catch (err) {
       console.error("Failed to load unique bond numbers", err);
     }
@@ -2935,12 +3198,16 @@ async function loadDetailedStockReport() {
 
   try {
     const query = params.toString() ? `?${params.toString()}` : "";
+    console.log(`Fetching stock report with query: ${query}`);
     const data = await apiCall(`/reports/stock-report${query}`);
+    const entries = Array.isArray(data) ? data : (data.entries || []);
+    console.log(`Stock report data received: ${entries.length} items`);
     const tbody = document.querySelector("#detailed-stock-table tbody");
-    tbody.innerHTML =
-      data.entries
-        .map(
-          (e) => `
+    if (!tbody) {
+      console.error("Could not find tbody for #detailed-stock-table");
+      return;
+    }
+    paginateTable("detailed-stock-table", entries, (e) => `
             <tr>
                 <td>${e.be_no}<br><small>${formatDate(e.be_date)}</small></td>
                 <td><strong><a href="#" onclick="event.preventDefault(); openLedgerModal('bond', '${e.bond_no}', '${e.bond_no}')">${e.bond_no}</a></strong></td>
@@ -2950,10 +3217,7 @@ async function loadDetailedStockReport() {
                 <td>${formatDate(e.initial_bonding_expiry)}</td>
                 <td>${e.consignment_name}</td>
             </tr>
-        `,
-        )
-        .join("") ||
-      '<tr><td colspan="7" class="empty-state">No matching stock found</td></tr>';
+        `, 7);
   } catch (error) {
     console.error("Detailed stock error:", error);
   }
@@ -3283,10 +3547,7 @@ async function initInwardEntry() {
       setFormDate("inw-receipt-date", toDateVal(entry.date_of_receipt));
       document.getElementById("inw-wh-code").value = entry.warehouse_code || "";
       document.getElementById("inw-wh-code").readOnly = true;
-      document.getElementById("inw-duty-rate").value = entry.duty_rate ? parseFloat(entry.duty_rate).toFixed(2) : "";
-      
-      const bondDutyRateEl = document.getElementById("inw-bond-duty-rate");
-      if (bondDutyRateEl) bondDutyRateEl.value = entry.duty_rate ? parseFloat(entry.duty_rate).toFixed(2) : "";
+      document.getElementById("inw-bond-duty-rate").value = entry.duty_rate ? parseFloat(entry.duty_rate).toFixed(2) : "";
       
       // Transport Mode
       updateTransportMode(entry.mode_of_receipt || 'AIRLINE');
@@ -3294,7 +3555,10 @@ async function initInwardEntry() {
       // Set NATIVE <select> value BEFORE TomSelect initializes
       // TomSelect reads the native select's selected option on init
       const consignmentIdStr = entry.consignment_id ? String(entry.consignment_id) : "";
-      const mode = entry.mode_of_receipt || 'AIRLINE';
+      let mode = entry.mode_of_receipt || 'AIRLINE';
+      if (mode === 'By Road') mode = 'ROAD';
+      if (mode === 'By Ship') mode = 'SHIP';
+      if (mode === 'By Airline') mode = 'AIRLINE';
 
       // Load airline/consignment selection regardless of mode
       if (airlineSelect) airlineSelect.value = consignmentIdStr;
@@ -3352,6 +3616,8 @@ async function initInwardEntry() {
   // Update airline name display after TomSelect is ready
   if (editId) {
     updateAirlineName();
+    // Re-render table after we know the bonding mode to ensure correct column visibility
+    renderInwardBillingTable();
   }
 
 
@@ -3362,6 +3628,11 @@ async function initInwardEntry() {
 
 // Handle transport mode switching
 function updateTransportMode(mode) {
+  // Legacy mapping
+  if (mode === 'By Road') mode = 'ROAD';
+  if (mode === 'By Ship') mode = 'SHIP';
+  if (mode === 'By Airline' || !mode) mode = 'AIRLINE';
+
   const airlineSelection = document.getElementById("airline-selection");
   const airlineNameDisplay = document.getElementById("airline-name-display");
   const airlineFlightSelection = document.getElementById("airline-flight-selection");
@@ -3404,8 +3675,12 @@ function updateAirlineName() {
     }
     
     if (selected) {
-        airlineName.value = selected.getAttribute('data-name') || '';
+        const name = selected.getAttribute('data-name') || '';
+        airlineName.value = name;
         if (airlineNameDisplay) airlineNameDisplay.style.display = 'block';
+
+        // Toggle Bond Mode for AIR INDIA
+        toggleInwardBondMode(name.toUpperCase().includes("AIR INDIA"));
     }
     
     // Load flight numbers ONLY if the selected airline ACTUALLY changed (prevents race condition during edit prepopulation)
@@ -3416,6 +3691,7 @@ function updateAirlineName() {
   } else {
     airlineName.value = '';
     if (airlineNameDisplay) airlineNameDisplay.style.display = 'none';
+    toggleInwardBondMode(false); // Default to common
     
     // Clear flight dropdown only if it isn't already empty
     const flightSelect = document.getElementById("inw-flight-no");
@@ -3423,6 +3699,16 @@ function updateAirlineName() {
       loadFlightNumbers(null);
     }
   }
+}
+
+function toggleInwardBondMode(isItemWise) {
+  // For Air India (isItemWise=true): show item-level Bond No & Bond Date columns
+  // Header sections (Bonding & Expiry, Duty Rate %, Bond No/Date) remain ALWAYS visible
+  const itemCols = document.querySelectorAll(".item-bond-col");
+  
+  itemCols.forEach(col => {
+    col.style.display = isItemWise ? "table-cell" : "none";
+  });
 }
 
 // Load flight numbers for a given airline (consignment_id)
@@ -3576,7 +3862,7 @@ function renderInwardBillingTable() {
   const tbody = document.getElementById("inward-billing-table-tbody");
   if (inwardItemsTemp.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="10" class="empty-state">No items added. Click "Add Item Row"</td></tr>';
+      '<tr><td colspan="12" class="empty-state">No items added. Click "Add Item Row"</td></tr>';
     return;
   }
 
@@ -3602,10 +3888,11 @@ function renderInwardBillingTable() {
             <td><input type="text" class="form-control" value="${item.duty_percent || 0}" placeholder="%" onchange="updateInwardItemPage(${idx}, 'duty_percent', this.value)"></td>
             <td><input type="number" step="0.01" class="form-control" value="${item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty', this.value); renderInwardBillingTable();"></td>
             <td><input type="date" class="form-control" value="${item.shelf_life_date ? item.shelf_life_date.split('T')[0] : ''}" onchange="updateInwardItemPage(${idx}, 'shelf_life_date', this.value)"></td>
+            <td class="item-bond-col"><input type="text" class="form-control" value="${item.bond_no || ""}" onchange="updateInwardItemPage(${idx}, 'bond_no', this.value)"></td>
+            <td class="item-bond-col"><input type="date" class="form-control" value="${item.bond_date ? item.bond_date.split('T')[0] : ''}" onchange="updateInwardItemPage(${idx}, 'bond_date', this.value)"></td>
             <td><input type="number" step="0.01" class="form-control" value="${item.qty_received || item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty_received', this.value)"></td>
             <td><input type="number" step="0.01" class="form-control" value="${parseFloat(item.value || 0).toFixed(2)}" onchange="updateInwardItemPage(${idx}, 'value', this.value); renderInwardBillingTable();"></td>
             <td><input type="number" step="0.01" class="form-control" value="${parseFloat(item.duty || 0).toFixed(2)}" onchange="updateInwardItemPage(${idx}, 'duty', this.value); renderInwardBillingTable();"></td>
-            <td><input type="text" class="form-control" value="${formatCurrency((parseFloat(item.value) || 0) + (parseFloat(item.duty) || 0))}" readonly></td>
             <td><button class="action-btn danger" onclick="removeInwardItemPage(${idx})"><i class="fas fa-trash"></i></button></td>
         </tr>
     `,
@@ -3650,6 +3937,8 @@ function addInwardItemPage() {
     qty: 0,
     value: 0,
     duty: 0,
+    bond_no: "",
+    bond_date: ""
   });
   renderInwardBillingTable();
 }
@@ -3822,7 +4111,7 @@ async function saveInwardPage() {
     warehouse_code: document.getElementById("inw-wh-code").value,
     customs_station: document.getElementById("inw-customs-station").value,
     date_of_order_section_60: document.getElementById("inw-sec60-date").value,
-    duty_rate: document.getElementById("inw-duty-rate").value || document.getElementById("inw-bond-duty-rate").value || null,
+    duty_rate: document.getElementById("inw-bond-duty-rate").value || null,
     initial_bonding_date: document.getElementById("inw-bond-start").value || null,
     initial_bonding_expiry: document.getElementById("inw-bond-expiry").value || null,
     extended_bonding_expiry1: document.getElementById("inw-ext-exp1").value || null,
@@ -3834,8 +4123,34 @@ async function saveInwardPage() {
     branch_id: getAuthUser().branch_id || null
   };
 
-  if (!data.be_no || !data.bond_no || data.items.length === 0) {
-    showToast("Required fields missing or no items added", "error");
+  const isItemWise = data.consignment_id && document.getElementById("inw-airline-name").value.toUpperCase().includes("AIR INDIA");
+
+  if (isItemWise && data.items.length > 0) {
+    // For item-wise, use first item's bond info for the header mandatory fields
+    data.bond_no = data.items[0].bond_no;
+    data.bond_date = data.items[0].bond_date;
+  }
+
+  // Validation for mandatory fields
+  const missingFields = [];
+  if (!data.be_no) missingFields.push("BE No");
+  if (!data.be_date) missingFields.push("BE Date");
+  if (!data.date_of_receipt) missingFields.push("Receipt Date");
+  if (!data.consignment_id) missingFields.push("Airline/Consignment");
+  if (transportMode === 'AIRLINE' && !data.flight_no) missingFields.push("Flight No");
+  if (transportMode === 'ROAD' && !data.transport_reg_no) missingFields.push("Transport Registration No");
+  if (transportMode === 'SHIP' && !data.transport_reg_no) missingFields.push("Ship Selection");
+  
+  // Bond info is mandatory unless it's Air India (handled separately in the data assignment above)
+  if (!data.bond_no) missingFields.push("Bond No");
+  
+  if (missingFields.length > 0) {
+    showToast(`Missing required fields: ${missingFields.join(", ")}`, "error");
+    return;
+  }
+
+  if (data.items.length === 0) {
+    showToast("Please add at least one item", "error");
     return;
   }
 
@@ -3881,6 +4196,108 @@ async function saveOutwardPage() {
     window.location.href = 'outward.html';
   } catch (e) {
     console.error(e);
+  }
+}
+
+// ============================================
+// Country Masters CRUD
+// ============================================
+
+async function loadCountriesPage() {
+  try {
+    const countries = await apiCall('/countries');
+    const tbody = document.getElementById('countries-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = countries.map((c, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><strong>${c.name}</strong></td>
+        <td>${c.code}</td>
+        <td>${c.port_of_discharge || '-'}</td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn primary" onclick="editCountry(${c.id})" title="Edit"><i class="fas fa-edit"></i></button>
+            <button class="action-btn danger" onclick="deleteCountry(${c.id})" title="Delete"><i class="fas fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (error) {
+    console.error('Error loading countries:', error);
+    showToast('Failed to load countries', 'error');
+  }
+}
+
+function openCountryModal(country = null) {
+  const existing = document.getElementById('country-modal');
+  if (existing) existing.remove();
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-overlay active" id="country-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;">
+      <div class="card" style="width:450px;max-width:95vw;">
+        <div class="card-header"><h3 class="card-title">${country ? 'Edit' : 'Add'} Country</h3></div>
+        <div class="card-body">
+          <div class="form-group" style="margin-bottom:1rem;">
+            <label class="form-label">Country Name *</label>
+            <input type="text" class="form-control" id="country-name" value="${country ? country.name : ''}" placeholder="e.g. Kuwait" />
+          </div>
+          <div class="form-group" style="margin-bottom:1rem;">
+            <label class="form-label">Country Code *</label>
+            <input type="text" class="form-control" id="country-code" value="${country ? country.code : ''}" placeholder="e.g. KWI" style="text-transform:uppercase;" />
+          </div>
+          <div class="form-group" style="margin-bottom:1rem;">
+            <label class="form-label">Port of Discharge</label>
+            <input type="text" class="form-control" id="country-port" value="${country ? (country.port_of_discharge || '') : ''}" placeholder="e.g. COK/KWI/COK" />
+          </div>
+          <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1.5rem;">
+            <button class="btn" onclick="document.getElementById('country-modal').remove()" style="background:var(--bg-tertiary);color:var(--text-primary);">Cancel</button>
+            <button class="btn btn-primary" onclick="saveCountry(${country ? country.id : 'null'})">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function saveCountry(id) {
+  const name = document.getElementById('country-name').value.trim();
+  const code = document.getElementById('country-code').value.trim();
+  const port_of_discharge = document.getElementById('country-port').value.trim();
+
+  if (!name || !code) return showToast('Name and Code are required', 'error');
+
+  try {
+    if (id) {
+      await apiCall(`/countries/${id}`, 'PUT', { name, code, port_of_discharge });
+      showToast('Country updated', 'success');
+    } else {
+      await apiCall('/countries', 'POST', { name, code, port_of_discharge });
+      showToast('Country added', 'success');
+    }
+    document.getElementById('country-modal').remove();
+    await loadCountriesPage();
+  } catch (error) {
+    showToast(error.message || 'Failed to save country', 'error');
+  }
+}
+
+async function editCountry(id) {
+  try {
+    const country = await apiCall(`/countries/${id}`);
+    openCountryModal(country);
+  } catch (error) {
+    showToast('Failed to load country', 'error');
+  }
+}
+
+async function deleteCountry(id) {
+  if (!confirm('Delete this country?')) return;
+  try {
+    await apiCall(`/countries/${id}`, 'DELETE');
+    showToast('Country deleted', 'success');
+    await loadCountriesPage();
+  } catch (error) {
+    showToast('Failed to delete country', 'error');
   }
 }
 
@@ -4277,6 +4694,12 @@ window.deleteAirline = deleteAirline;
 window.manageFlights = manageFlights;
 window.addNewFlightFromModal = addNewFlightFromModal;
 window.deleteFlightNumber = deleteFlightNumber;
+// Country Masters
+window.loadCountriesPage = loadCountriesPage;
+window.openCountryModal = openCountryModal;
+window.saveCountry = saveCountry;
+window.editCountry = editCountry;
+window.deleteCountry = deleteCountry;
 // Shipping Bill CRUD + Workflow
 window.loadShippingBillsListPage = loadShippingBillsListPage;
 window.initShippingBillEntry = initShippingBillEntry;
@@ -4289,6 +4712,8 @@ window.updateSBItemField = updateSBItemField;
 window.removeSBItem = removeSBItem;
 window.saveShippingBill = saveShippingBill;
 window.approveShippingBill = approveShippingBill;
+window.unapproveShippingBill = unapproveShippingBill;
+window.rejectShippingBill = rejectShippingBill;
 window.deleteShippingBill = deleteShippingBill;
 window.viewShippingBill = viewShippingBill;
 window.printShippingBill = printShippingBill;
@@ -4404,6 +4829,7 @@ async function loadBranchesPage() {
                 <td>${b.id}</td>
                 <td>${b.name}</td>
                 <td>${b.code || "-"}</td>
+                <td>${b.airport_code || "-"}</td>
                 <td>${b.address || "-"}</td>
                 <td><span class="status-indicator ${b.status === 'ACTIVE' ? 'status-active' : 'status-inactive'}"></span> ${b.status}</td>
                 <td>
@@ -4428,6 +4854,10 @@ function openBranchModal(branch = null) {
                 <label class="form-label">Code</label>
                 <input type="text" class="form-control" id="branch-code" value="${branch?.code || ""}">
             </div>
+            <div class="form-group">
+                <label class="form-label">Airport Code</label>
+                <input type="text" class="form-control" id="branch-airport-code" value="${branch?.airport_code || ""}" placeholder="e.g. COK">
+            </div>
             <div class="form-group" style="grid-column: span 2">
                 <label class="form-label">Address</label>
                 <textarea class="form-control" id="branch-address" rows="2">${branch?.address || ""}</textarea>
@@ -4448,6 +4878,7 @@ async function saveBranch(id) {
     const data = {
         name: document.getElementById('branch-name').value,
         code: document.getElementById('branch-code').value,
+        airport_code: document.getElementById('branch-airport-code').value,
         address: document.getElementById('branch-address').value
     };
     try {
@@ -4458,7 +4889,98 @@ async function saveBranch(id) {
     } catch (e) { console.error(e); }
 }
 
-// ================= Global Search =================
+// ================= Bulk Stock Upload =================
+async function openBulkUploadModal() {
+    try {
+        const branches = await apiCall('/branches');
+        const user = getAuthUser();
+        const body = `
+            <div class="form-group">
+                <label class="form-label">Select Godown / Branch *</label>
+                <select class="form-control" id="bulk-branch-id">
+                    <option value="">Select Branch</option>
+                    ${branches.map(b => `<option value="${b.id}" ${b.id == user.branch_id ? 'selected' : ''}>${b.name} (${b.airport_code || b.code})</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group" style="margin-top: 15px">
+                <label class="form-label">CSV File *</label>
+                <input type="file" class="form-control" id="bulk-stock-file" accept=".csv">
+                <p class="help-text" style="margin-top: 5px; font-size: 12px; color: #666;">
+                    Make sure to use the <a href="javascript:void(0)" onclick="downloadSampleCSV()" style="color: var(--primary-color); text-decoration: underline;">Sample CSV format</a>.
+                </p>
+            </div>
+        `;
+        openModal("Bulk Stock Upload", body, `
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitBulkUpload()">Start Upload</button>
+        `, "active");
+    } catch (err) {
+        showToast("Error loading branches: " + err.message, "error");
+    }
+}
+
+async function submitBulkUpload() {
+    const branchId = document.getElementById('bulk-branch-id').value;
+    const fileInput = document.getElementById('bulk-stock-file');
+    const file = fileInput.files[0];
+
+    if (!branchId || !file) {
+        showToast("Please select both branch and file", "warning");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('branch_id', branchId);
+
+    try {
+        const uploadBtn = document.querySelector('.modal-footer .btn-primary');
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+
+        const res = await fetch('/api/bulk-upload/stock', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await res.json();
+        if (res.ok) {
+            showToast(result.message, 'success');
+            closeModal();
+            if (typeof loadStockPage === 'function') loadStockPage();
+        } else {
+            showToast(result.error || 'Upload failed', 'error');
+            uploadBtn.disabled = false;
+            uploadBtn.innerText = 'Start Upload';
+        }
+    } catch (err) {
+        showToast('Upload failed: ' + err.message, 'error');
+    }
+}
+
+async function handleBulkStockUpload(input) {
+    // Deprecated in favor of openBulkUploadModal
+    console.warn('handleBulkStockUpload is deprecated. Use openBulkUploadModal instead.');
+}
+
+function downloadSampleCSV() {
+  const headers = ['date', 'consignment', 'description', 'qty', 'unit', 'value', 'duty', 'bond_no', 'bond_expiry'];
+  const sampleData = [
+    ['2026-03-28', 'AIR INDIA', 'WHISKY 750ML', '100', 'BTL', '50000', '10000', 'BOND-TEST-001', '2027-03-28'],
+    ['2026-03-28', 'EMIRATES', 'CIGARETTES CARTON', '50', 'CTN', '25000', '5000', 'BOND-TEST-002', '2027-03-28']
+  ];
+  
+  let csvContent = headers.join(',') + '\n' + sampleData.map(row => row.join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.setAttribute('hidden', '');
+  a.setAttribute('href', url);
+  a.setAttribute('download', 'sample_stock_upload.csv');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 
 function initGlobalSearch(searchInput) {
     if (!searchInput) return;
@@ -4533,6 +5055,12 @@ function initGlobalSearch(searchInput) {
 
 function initNavigation() {
     const user = getAuthUser();
+    
+    // Initialize sidebar state from localStorage
+    if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.body.classList.add('collapsed-sidebar');
+    }
+
     const sidebar = document.getElementById('sidebar-container');
     const topBar = document.getElementById('top-bar-container');
     
@@ -4542,6 +5070,9 @@ function initNavigation() {
             <div class="sidebar-header">
               <div class="logo-box"><i class="fas fa-plane-arrival"></i></div>
               <div class="logo-text">CAFS <span>Inventory</span></div>
+              <div class="sidebar-toggle" onclick="toggleSidebar()">
+                <i class="fas fa-bars"></i>
+              </div>
             </div>
             <nav class="sidebar-nav">
               <a href="index.html" class="nav-item ${window.location.pathname.endsWith('index.html') ? 'active' : ''}"><i class="fas fa-th-large"></i> <span>Dashboard</span></a>
@@ -4567,23 +5098,25 @@ function initNavigation() {
                 <a href="return-stock.html" class="nav-item ${window.location.pathname.endsWith('return-stock.html') ? 'active' : ''}"><i class="fas fa-undo"></i> <span>Return Stock</span></a>
                 
                 <div class="nav-label">Reports</div>
-                <a href="form-a.html" class="nav-item"><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a>
-                <a href="form-b.html" class="nav-item"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
-                <a href="detailed-stock.html" class="nav-item"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
-                <a href="shipping-bill.html" class="nav-item"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
+                <a href="form-a.html" class="nav-item ${window.location.pathname.endsWith('form-a.html') ? 'active' : ''}"><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a>
+                <a href="form-b.html" class="nav-item ${window.location.pathname.endsWith('form-b.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
+                <a href="detailed-stock.html" class="nav-item ${window.location.pathname.endsWith('detailed-stock.html') ? 'active' : ''}"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
+                <a href="shipping-bill.html" class="nav-item ${window.location.pathname.endsWith('shipping-bill.html') ? 'active' : ''}"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
 
                 <div class="nav-label">Master Data</div>
-                <a href="items.html" class="nav-item"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
-                <a href="consignments.html" class="nav-item"><i class="fas fa-building"></i> <span>Consignments</span></a>
+                <a href="items.html" class="nav-item ${window.location.pathname.endsWith('items.html') ? 'active' : ''}"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
+                <a href="consignments.html" class="nav-item ${window.location.pathname.endsWith('consignments.html') ? 'active' : ''}"><i class="fas fa-building"></i> <span>Consignments</span></a>
                 <a href="airline-masters.html" class="nav-item ${window.location.pathname.endsWith('airline-masters.html') ? 'active' : ''}"><i class="fas fa-plane"></i> <span>Airline Masters</span></a>
+                <a href="country-masters.html" class="nav-item ${window.location.pathname.endsWith('country-masters.html') ? 'active' : ''}"><i class="fas fa-globe"></i> <span>Country Masters</span></a>
               `}
             </nav>
             <div class="sidebar-footer">
               <div class="user-profile">
                 <div class="user-avatar">${(user.username || 'GU').substring(0,2).toUpperCase()}</div>
                 <div class="user-info">
-                  <div class="user-name">${user.name || user.username || 'Guest'}</div>
-                  <div class="user-role">${user.branch_name || user.role || ''}</div>
+                  <div class="user-name" style="margin-bottom: 2px;">${user.name || 'Guest'}</div>
+                  <div class="user-username" style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.5); margin-bottom: 4px;">@${user.username}</div>
+                  <div class="user-role">${user.branch_name ? `Godown: ${user.branch_name}` : user.role}</div>
                 </div>
                 <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
               </div>
@@ -4617,6 +5150,11 @@ function initNavigation() {
         const searchInput = document.getElementById("global-search");
         if (searchInput) initGlobalSearch(searchInput);
     }
+}
+
+function toggleSidebar() {
+    const isCollapsed = document.body.classList.toggle('collapsed-sidebar');
+    localStorage.setItem('sidebar-collapsed', isCollapsed);
 }
 
 // Super Admin Tools - Auto Login / User Swapper

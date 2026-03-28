@@ -57,6 +57,10 @@ app.use("/api/users", usersRouter);
 app.use("/api/branches", branchesRouter);
 const searchRouter = require("./routes/search");
 app.use("/api/search", searchRouter);
+const countriesRouter = require("./routes/countries");
+app.use("/api/countries", countriesRouter);
+const bulkUploadRouter = require("./routes/bulk-upload");
+app.use("/api/bulk-upload", bulkUploadRouter);
 
 
 // Error handling middleware
@@ -142,6 +146,17 @@ async function initDB() {
             FOREIGN KEY (consignment_id) REFERENCES consignments(id) ON DELETE CASCADE
           )`);
         } catch(e) { console.log('flight_numbers table check:', e.message); }
+
+        // Ensure countries table exists
+        try {
+          await pool.query(`CREATE TABLE IF NOT EXISTS countries (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            code VARCHAR(10) NOT NULL,
+            port_of_discharge VARCHAR(100),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )`);
+        } catch(e) { console.log('countries table check:', e.message); }
 
         // Ensure super admin exists
         try {

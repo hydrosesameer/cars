@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Country Masters - CAFS Inventory</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/index.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <aside class="sidebar" id="sidebar-container"></aside>
+
+      <main class="main-content">
+        <header class="top-bar" id="top-bar-container"></header>
+        <div class="content-body">
+          <div class="page-header">
+            <h1 class="page-title">Country Masters</h1>
+            <div class="page-actions">
+              <button class="btn btn-primary" onclick="openCountryModal()">
+                <i class="fas fa-plus"></i> Add Country
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body" style="padding:0">
+              <div class="table-responsive">
+                <table class="table" id="countries-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Country Name</th>
+                      <th>Code</th>
+                      <th>Port of Discharge</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="countries-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+    <script src="js/app.js?v=60"></script>
+    <script>document.addEventListener('DOMContentLoaded', async () => {
+        if (!authCheck()) return;
+        initNavigation();
+        await loadCountriesPage();
+    });</script>
+  </body>
+</html>

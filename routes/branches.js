@@ -14,12 +14,12 @@ router.get('/', async (req, res) => {
 
 // Create branch
 router.post('/', async (req, res) => {
-    const { name, code, address } = req.body;
+    const { name, code, airport_code, address } = req.body;
     const db = req.app.locals.db;
     try {
         await db.query(
-            'INSERT INTO branches (name, code, address) VALUES (?, ?, ?)',
-            [name, code, address]
+            'INSERT INTO branches (name, code, airport_code, address) VALUES (?, ?, ?, ?)',
+            [name, code, airport_code || null, address]
         );
         res.status(201).json({ message: 'Branch created' });
     } catch (err) {
@@ -29,12 +29,12 @@ router.post('/', async (req, res) => {
 
 // Update branch
 router.put('/:id', async (req, res) => {
-    const { name, code, address, status } = req.body;
+    const { name, code, airport_code, address, status } = req.body;
     const db = req.app.locals.db;
     try {
         await db.query(
-            'UPDATE branches SET name = ?, code = ?, address = ?, status = ? WHERE id = ?',
-            [name, code, address, status, req.params.id]
+            'UPDATE branches SET name = ?, code = ?, airport_code = ?, address = ?, status = ? WHERE id = ?',
+            [name, code, airport_code || null, address, status, req.params.id]
         );
         res.json({ message: 'Branch updated' });
     } catch (err) {
