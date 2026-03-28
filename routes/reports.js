@@ -148,40 +148,41 @@ router.get('/form-b', async (req, res) => {
 
         // 2. Main query for monthly closing stock - Aggregate by Airline (Consignment)
         let query = `
-            SELECT c.name as consignment_name,
-                SUM(ie.qty_received) as total_qty_received,
-                SUM(ie.qty_received - COALESCE(
-                    (SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) 
-                     FROM outward_items oi 
-                     JOIN outward_entries oe ON oi.outward_id = oe.id 
-                     WHERE oi.inward_id = ie.id AND oe.dispatch_date <= ?), 0
-                ) - COALESCE(
-                    (SELECT SUM(di.qty_damaged) 
-                     FROM damaged_items di 
-                     JOIN inward_items ii_inner ON di.inward_item_id = ii_inner.id 
-                     WHERE ii_inner.inward_id = ie.id AND di.created_at <= ?), 0
-                ) + COALESCE(
-                    (SELECT SUM(rse.qty_returned) 
-                     FROM return_stock_entries rse 
-                     JOIN inward_items ii_inner ON rse.inward_item_id = ii_inner.id 
-                     WHERE ii_inner.inward_id = ie.id AND rse.created_at <= ?), 0
-                )) as qty_in_stock,
-                SUM(ie.value) as total_value,
-                MAX(ie.be_no) as be_no,
-                MAX(ie.be_date) as be_date,
-                MAX(COALESCE((SELECT bond_no FROM inward_items WHERE inward_id = ie.id LIMIT 1), ie.bond_no)) as bond_no,
-                MAX(ie.date_of_order_section_60) as date_of_order_section_60,
-                MAX(ie.sl_no_import_invoice) as sl_no_import_invoice,
-                MAX(ie.initial_bonding_expiry) as initial_bonding_expiry,
-                MAX(ie.extended_bonding_expiry1) as extended_bonding_expiry1,
-                MAX(ie.extended_bonding_expiry2) as extended_bonding_expiry2,
-                MAX(ie.extended_bonding_expiry3) as extended_bonding_expiry3,
-                MAX(ie.value_rate) as value_rate,
-                'Summary' as remarks
-            FROM inward_entries ie
-            LEFT JOIN consignments c ON ie.consignment_id = c.id
-            WHERE ie.date_of_receipt <= ?
-        `;
+            SELECT * FROM (
+                SELECT c.name as consignment_name,
+                    ii.qty as total_qty_received,
+                    (ii.qty - COALESCE(
+                        (SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) 
+                         FROM outward_items oi 
+                         JOIN outward_entries oe ON oi.outward_id = oe.id 
+                         WHERE oi.inward_item_id = ii.id AND oe.dispatch_date <= ?), 0
+                    ) - COALESCE(
+                        (SELECT SUM(di.qty_damaged) 
+                         FROM damaged_items di 
+                         WHERE di.inward_item_id = ii.id AND di.created_at <= ?), 0
+                    ) + COALESCE(
+                        (SELECT SUM(rse.qty_returned) 
+                         FROM return_stock_entries rse 
+                         WHERE rse.inward_item_id = ii.id AND rse.created_at <= ?), 0
+                    )) as qty_in_stock,
+                    ii.value as total_value,
+                    ie.be_no as be_no,
+                    ie.be_date as be_date,
+                    COALESCE(ii.bond_no, ie.bond_no) as bond_no,
+                    ie.date_of_order_section_60 as date_of_order_section_60,
+                    ie.sl_no_import_invoice as sl_no_import_invoice,
+                    COALESCE(ii.bond_expiry, ie.initial_bonding_expiry) as initial_bonding_expiry,
+                    ie.extended_bonding_expiry1 as extended_bonding_expiry1,
+                    ie.extended_bonding_expiry2 as extended_bonding_expiry2,
+                    ie.extended_bonding_expiry3 as extended_bonding_expiry3,
+                    COALESCE(ii.unit_value, ie.value_rate) as value_rate,
+                    ii.description as description,
+                    ii.description as remarks
+                FROM inward_items ii
+                JOIN inward_entries ie ON ii.inward_id = ie.id
+                LEFT JOIN consignments c ON ie.consignment_id = c.id
+                WHERE ie.date_of_receipt <= ?
+            `;
         
         let params = [endDate, endDate + ' 23:59:59', endDate + ' 23:59:59', endDate];
         
@@ -195,7 +196,7 @@ router.get('/form-b', async (req, res) => {
             params.push(consignment_id);
         }
         
-        query += ` GROUP BY ie.consignment_id HAVING qty_in_stock > 0 ORDER BY c.name`;
+        query += ` ) as stock WHERE qty_in_stock > 0 ORDER BY consignment_name, description`;
 
         const [entries] = await db.query(query, params);
         

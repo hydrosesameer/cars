@@ -2975,7 +2975,7 @@ async function printShippingBill(id) {
 
       @media print {
         body { padding: 8mm; }
-        @page { size: A4 portrait; margin: 8mm; }
+        @page { size: legal portrait; margin: 8mm; }
       }
     </style></head><body>
 
