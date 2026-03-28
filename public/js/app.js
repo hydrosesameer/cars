@@ -3051,7 +3051,7 @@ async function printShippingBill(id) {
     <!-- ===== ENTERED NO ===== -->
     <div class="entered-section">
       <div class="entered-left">
-        <b>Entered No:</b>&emsp;${bill.entered_no || '___________'}&emsp;&emsp;${fmtDate(bill.entered_date) || fmtDate(bill.sb_date)}
+        <b>Entered No:</b>&emsp;${bill.sb_no || '___________'}&emsp;&emsp;${fmtDate(bill.entered_date) || fmtDate(bill.sb_date)}
       </div>
       <div class="entered-right">
         Permitted free of duty under Section 87 of the New<br>
