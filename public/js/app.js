@@ -2634,6 +2634,11 @@ async function saveShippingBill() {
       qty: i.qty,
       value_amount: i.value_amount,
       duty_amount: i.duty_amount,
+      unit_value: i.unit_value,
+      unit_duty: i.unit_duty,
+      bond_no: i.bond_no,
+      bond_date: i.bond_date,
+      bond_expiry: i.bond_expiry
     }));
 
   if (items.length === 0) {
@@ -2873,9 +2878,14 @@ async function printShippingBill(id) {
     // Format date as DD.MM.YYYY
     const fmtDate = (d) => {
       if (!d) return '';
-      const parts = d.split('-');
-      if (parts.length === 3) return parts[2] + '.' + parts[1] + '.' + parts[0];
-      return d;
+      // Ensure we have a string
+      const str = String(d);
+      // Try to extract YYYY-MM-DD using regex
+      const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (match) {
+        return `${match[3]}.${match[2]}.${match[1]}`;
+      }
+      return str;
     };
 
     // Build 25 item rows (empty rows for unused slots)
@@ -2937,10 +2947,10 @@ async function printShippingBill(id) {
       /* --- Items table --- */
       .items-table { width: 100%; border-collapse: collapse; }
       .items-table th {
-        border: 1px solid #000; padding: 3px 4px; font-size: 9px; font-weight: bold;
+        border: 1px solid #000; padding: 3px 4px; font-size: 8px; font-weight: bold;
         text-align: center; background: none; vertical-align: bottom;
       }
-      .items-table td { border: 1px solid #000; padding: 2px 4px; font-size: 10px; height: 18px; }
+      .items-table td { border: 1px solid #000; padding: 2px 4px; font-size: 9px; height: 18px; }
       .items-table .c { text-align: center; }
       .items-table .r { text-align: right; }
       .total-row td { font-weight: bold; }
@@ -3022,12 +3032,12 @@ async function printShippingBill(id) {
     <table class="items-table">
       <thead>
         <tr>
-          <th style="width:5%">S.No.</th>
-          <th style="width:11%">Bond No.</th>
-          <th style="width:9%">Expiry date</th>
-          <th style="width:28%">Detailed Description of Goods&ensp;Distinguishing<br>Size, brand etc.</th>
+          <th style="width:4%">S.No.</th>
+          <th style="width:12%">Bond No.</th>
+          <th style="width:10%">Expiry date</th>
+          <th style="width:30%">Detailed Description of Goods&ensp;Distinguishing<br>Size, brand etc.</th>
           <th style="width:6%">QTY.</th>
-          <th style="width:9%">Unit<br>Value</th>
+          <th style="width:10%">Unit<br>Value</th>
           <th style="width:10%">Value<br>Amount</th>
           <th style="width:9%">Unit<br>Duty</th>
           <th style="width:10%">Duty<br>Amount</th>
@@ -3499,7 +3509,7 @@ async function initInwardEntry() {
     airlineSelect.innerHTML =
       '<option value="">Select Airline</option>' +
       airlines
-        .map((c) => `<option value="${c.id}" data-code="${c.airline_code || c.code}" data-name="${c.name}">${c.airline_code || c.code} - ${c.name}</option>`)
+        .map((c) => `<option value="${c.id}" data-code="${c.airline_code || c.code || ''}" data-name="${c.name}">${c.airline_code || c.code ? (c.airline_code || c.code) + ' - ' : ''}${c.name}</option>`)
         .join("");
   }
   
@@ -3817,7 +3827,7 @@ function setupFormKeyboardNav(formId) {
           const newInputs = form.querySelectorAll(
             "#inward-billing-table-tbody input",
           );
-          if (newInputs.length > 0) newInputs[newInputs.length - 8].focus(); // First input of new row
+          if (newInputs.length > 0) newInputs[newInputs.length - 13].focus(); // First input of new row
         }, 50);
       }
     }
@@ -3862,7 +3872,7 @@ function renderInwardBillingTable() {
   const tbody = document.getElementById("inward-billing-table-tbody");
   if (inwardItemsTemp.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="12" class="empty-state">No items added. Click "Add Item Row"</td></tr>';
+      '<tr><td colspan="14" class="empty-state">No items added. Click "Add Item Row"</td></tr>';
     return;
   }
 
@@ -3888,9 +3898,11 @@ function renderInwardBillingTable() {
             <td><input type="text" class="form-control" value="${item.duty_percent || 0}" placeholder="%" onchange="updateInwardItemPage(${idx}, 'duty_percent', this.value)"></td>
             <td><input type="number" step="0.01" class="form-control" value="${item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty', this.value); renderInwardBillingTable();"></td>
             <td><input type="date" class="form-control" value="${item.shelf_life_date ? item.shelf_life_date.split('T')[0] : ''}" onchange="updateInwardItemPage(${idx}, 'shelf_life_date', this.value)"></td>
-            <td class="item-bond-col"><input type="text" class="form-control" value="${item.bond_no || ""}" onchange="updateInwardItemPage(${idx}, 'bond_no', this.value)"></td>
-            <td class="item-bond-col"><input type="date" class="form-control" value="${item.bond_date ? item.bond_date.split('T')[0] : ''}" onchange="updateInwardItemPage(${idx}, 'bond_date', this.value)"></td>
+            <td><input type="text" class="form-control" value="${item.bond_no || ''}" onchange="updateInwardItemPage(${idx}, 'bond_no', this.value)"></td>
+            <td><input type="date" class="form-control" value="${item.bond_date ? item.bond_date.split('T')[0] : ''}" onchange="updateInwardItemPage(${idx}, 'bond_date', this.value)"></td>
+            <td><input type="date" class="form-control" value="${item.bond_expiry ? (item.bond_expiry.includes('T') ? item.bond_expiry.split('T')[0] : item.bond_expiry) : ''}" onchange="updateInwardItemPage(${idx}, 'bond_expiry', this.value)"></td>
             <td><input type="number" step="0.01" class="form-control" value="${item.qty_received || item.qty || 0}" onchange="updateInwardItemPage(${idx}, 'qty_received', this.value)"></td>
+
             <td><input type="number" step="0.01" class="form-control" value="${parseFloat(item.value || 0).toFixed(2)}" onchange="updateInwardItemPage(${idx}, 'value', this.value); renderInwardBillingTable();"></td>
             <td><input type="number" step="0.01" class="form-control" value="${parseFloat(item.duty || 0).toFixed(2)}" onchange="updateInwardItemPage(${idx}, 'duty', this.value); renderInwardBillingTable();"></td>
             <td><button class="action-btn danger" onclick="removeInwardItemPage(${idx})"><i class="fas fa-trash"></i></button></td>
@@ -3938,7 +3950,8 @@ function addInwardItemPage() {
     value: 0,
     duty: 0,
     bond_no: "",
-    bond_date: ""
+    bond_date: "",
+    bond_expiry: ""
   });
   renderInwardBillingTable();
 }

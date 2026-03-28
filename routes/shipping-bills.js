@@ -51,9 +51,13 @@ router.get('/:id', async (req, res) => {
         const bill = bills[0];
 
         const [items] = await db.query(`
-            SELECT sbi.*, ie.be_no, ie.be_date
+            SELECT sbi.*, ie.be_no, ie.be_date,
+                   COALESCE(ii.bond_date, ie.bond_date) AS bond_date,
+                   COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry) AS bond_expiry,
+                   COALESCE(ii.bond_no, ie.bond_no) AS bond_no
             FROM shipping_bill_items sbi
             LEFT JOIN inward_entries ie ON sbi.inward_id = ie.id
+            LEFT JOIN inward_items ii ON sbi.inward_item_id = ii.id
             WHERE sbi.shipping_bill_id = ?
             ORDER BY sbi.id
         `, [req.params.id]);

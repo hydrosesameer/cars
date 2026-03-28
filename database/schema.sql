@@ -118,6 +118,7 @@ CREATE TABLE `inward_items` (
   `duty` decimal(15,2) DEFAULT NULL,
   `qty_out` int(11) DEFAULT 0,
   `bond_no` varchar(50) DEFAULT NULL,
+  `bond_date` date DEFAULT NULL,
   `bond_expiry` date DEFAULT NULL,
   `unit_value` decimal(15,4) DEFAULT NULL,
   `value_amount` decimal(15,2) DEFAULT NULL,

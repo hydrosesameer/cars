@@ -36,10 +36,13 @@ router.get('/available/items', async (req, res) => {
     try {
         let query = `
             SELECT ii.id as inward_item_id, ii.inward_id, ii.description, ii.item_id, ii.value, ii.duty, ii.hsn_code, ii.qty as original_qty,
-                   ie.bond_no, ie.consignment_id, ie.duty_rate,
+                   COALESCE(ii.bond_no, ie.bond_no) AS bond_no,
+                   COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry) AS bond_expiry,
+                   ie.consignment_id, ie.duty_rate,
                    ie.initial_bonding_expiry, 
                    ie.extended_bonding_expiry1, ie.extended_bonding_expiry2, ie.extended_bonding_expiry3,
                    ie.be_date, ie.be_no,
+                   COALESCE(ii.bond_date, ie.bond_date) AS bond_date,
                    (ii.qty - COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) - COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0) + COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse WHERE rse.inward_item_id = ii.id), 0)) as available_qty
             FROM inward_items ii
             JOIN inward_entries ie ON ii.inward_id = ie.id
@@ -82,7 +85,7 @@ router.get('/:id', async (req, res) => {
         const entry = entries[0];
         
         const [items] = await db.query(`
-            SELECT oi.*, ie.bond_no as bond_no, ii.description as item_description, ii.qty as original_qty
+            SELECT oi.*, COALESCE(ii.bond_no, ie.bond_no) as bond_no, COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry) AS bond_expiry, ii.description as item_description, ii.qty as original_qty
             FROM outward_items oi
             JOIN inward_entries ie ON oi.inward_id = ie.id
             JOIN inward_items ii ON oi.inward_item_id = ii.id

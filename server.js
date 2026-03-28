@@ -121,7 +121,9 @@ async function initDB() {
           { table: 'damaged_items', column: 'inward_id', sql: 'ALTER TABLE damaged_items ADD COLUMN inward_id INT' },
           { table: 'damaged_items', column: 'remarks', sql: 'ALTER TABLE damaged_items ADD COLUMN remarks TEXT' },
           { table: 'return_stock_entries', column: 'branch_id', sql: 'ALTER TABLE return_stock_entries ADD COLUMN branch_id INT' },
-          { table: 'users', column: 'role', sql: "ALTER TABLE users MODIFY COLUMN role ENUM('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER', 'STAFF') NOT NULL DEFAULT 'STAFF'" }
+          { table: 'users', column: 'role', sql: "ALTER TABLE users MODIFY COLUMN role ENUM('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER', 'STAFF') NOT NULL DEFAULT 'STAFF'" },
+          { table: 'inward_items', column: 'bond_date', sql: 'ALTER TABLE inward_items ADD COLUMN bond_date DATE' },
+          { table: 'inward_items', column: 'bond_expiry', sql: 'ALTER TABLE inward_items ADD COLUMN bond_expiry DATE' }
         ];
 
         for (const m of migrations) {

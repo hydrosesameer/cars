@@ -73,6 +73,8 @@ async function applyMigration() {
 
         // 5. Update shipping_bills
         const sb_cols = [
+            ['sb_no', 'varchar(50) DEFAULT NULL'],
+            ['sb_date', 'date DEFAULT NULL'],
             ['flight_no', 'varchar(50) DEFAULT NULL'],
             ['etd', 'date DEFAULT NULL'],
             ['vt', 'varchar(50) DEFAULT NULL'],
