@@ -63,11 +63,15 @@ async function applyMigration() {
         // 2. Update branches
         await addColumnSafely('branches', 'airport_code', 'varchar(10) DEFAULT NULL');
 
-        // 3. Update entries
+        // 3. Update entries (Header)
         await addColumnSafely('inward_entries', 'branch_id', 'int(11) DEFAULT NULL');
         await addColumnSafely('outward_entries', 'branch_id', 'int(11) DEFAULT NULL');
 
-        // 4. Update shipping_bills
+        // 4. Update items (Details)
+        await addColumnSafely('inward_items', 'bond_date', 'date DEFAULT NULL');
+        await addColumnSafely('inward_items', 'duty_percent', 'varchar(50) DEFAULT NULL');
+
+        // 5. Update shipping_bills
         const sb_cols = [
             ['flight_no', 'varchar(50) DEFAULT NULL'],
             ['etd', 'date DEFAULT NULL'],
