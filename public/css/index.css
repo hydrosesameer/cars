@@ -2347,6 +2347,12 @@ textarea.form-control {
   box-shadow: none !important;
 }
 
+.ts-wrapper {
+  position: relative;
+}
+.ts-wrapper.dropdown-active {
+  z-index: 1050;
+}
 .ts-dropdown {
   border-color: var(--border-color) !important;
   border-radius: var(--radius-md) !important;

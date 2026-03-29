@@ -315,7 +315,7 @@ function initSearchableSelects() {
     // Only apply to selects with options
     if (select.options.length > 0) {
       new TomSelect(select, {
-        plugins: ['clear_button', 'dropdown_input'],
+        plugins: ['clear_button'],
         searchField: ['text'],
         create: select.hasAttribute('data-create'),
         allowEmptyOption: true,
