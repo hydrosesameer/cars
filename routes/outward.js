@@ -47,6 +47,8 @@ router.get('/available/items', async (req, res) => {
             FROM inward_items ii
             JOIN inward_entries ie ON ii.inward_id = ie.id
             WHERE (ii.qty - COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) - COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0) + COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse WHERE rse.inward_item_id = ii.id), 0)) > 0
+              AND ii.extension_status != 'APPLIED'
+              AND DATEDIFF(COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry), CURDATE()) >= 0
         `;
         const params = [];
         if (consignment_id) {
@@ -54,15 +56,15 @@ router.get('/available/items', async (req, res) => {
             params.push(consignment_id);
         }
         if (flight_no) {
-            query += ' AND ie.flight_no LIKE ?'; // Assuming inward_entries has flight_no for filtering
+            query += ' AND ie.flight_no LIKE ?';
             params.push(`%${flight_no}%`);
         }
         if (branch_id) {
-            query += ' AND ie.branch_id = ?'; // Assuming inward_entries has branch_id for filtering
+            query += ' AND ie.branch_id = ?';
             params.push(branch_id);
         }
         
-        query += ' ORDER BY ie.bond_no, ii.description';
+        query += ' ORDER BY bond_expiry ASC, ie.bond_no ASC, ii.description ASC';
         const [items] = await db.query(query, params);
         res.json(items);
     } catch (error) {

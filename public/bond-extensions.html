@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bond Extensions - CAFS Customs Bonded Warehouse</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="css/index.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar-container"></aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar" id="top-bar-container"></header>
+
+            <!-- Page Content -->
+            <div id="page-content" class="content-body">
+                <section id="page-bond-extensions" class="page active">
+                    <div class="page-header">
+                        <h2><i class="fas fa-file-contract"></i> Bond Extensions</h2>
+                        <div class="header-actions">
+                             <div class="filter-group" id="branch-filter-group" style="display: none;">
+                                <label>Godown / Branch</label>
+                                <select id="bond-ext-filter-branch" class="form-control" onchange="loadBondExtensionsPage()">
+                                    <option value="">All Godowns</option>
+                                    <!-- Injected by JS -->
+                                </select>
+                             </div>
+                             <div class="filter-group">
+                                <label>Filter by Status</label>
+                                <select id="bond-ext-filter-status" class="form-control" onchange="loadBondExtensionsPage()">
+                                    <option value="ALL">All Items</option>
+                                    <option value="NEAR_EXPIRY">Near Expiry (&le; 100 Days)</option>
+                                    <option value="EXPIRED">Expired Stock</option>
+                                    <option value="APPLIED">Extension Applied (Locked)</option>
+                                </select>
+                             </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body" style="padding: 0;">
+                            <div class="table-responsive">
+                                <table class="table" id="bond-extensions-table">
+                                    <thead>
+                                        <tr>
+                                            <th>BE No & Date</th>
+                                            <th>Bond No</th>
+                                            <th>Airline</th>
+                                            <th>Description</th>
+                                            <th>Qty (Bal)</th>
+                                            <th>Active Expiry Date</th>
+                                            <th>Status</th>
+                                            <th style="text-align: right; min-width: 140px;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Injected by JavaScript -->
+                                        <tr><td colspan="8" style="text-align: center; padding: 2rem;">Loading data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="pagination-container" id="pagination-controls-bond-extensions-table"></div>
+                        </div>
+                    </div>
+
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+    <script src="js/app.js?v=64"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!authCheck()) return;
+            initNavigation('bond-extensions');
+            await loadBondExtensionsPage();
+        });
+    </script>
+</body>
+</html>

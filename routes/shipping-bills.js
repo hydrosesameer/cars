@@ -35,9 +35,11 @@ router.get('/:id', async (req, res) => {
     const { branch_id } = req.query;
     try {
         let query = `
-            SELECT sb.*, c.name as consignment_name, c.code as consignment_code
+            SELECT sb.*, c.name as consignment_name, c.code as consignment_code,
+                   b.name as branch_name, b.address as branch_address, b.shipping_place
             FROM shipping_bills sb
             LEFT JOIN consignments c ON sb.consignment_id = c.id
+            LEFT JOIN branches b ON sb.branch_id = b.id
             WHERE sb.id = ?
         `;
         let params = [req.params.id];
@@ -59,7 +61,7 @@ router.get('/:id', async (req, res) => {
             LEFT JOIN inward_entries ie ON sbi.inward_id = ie.id
             LEFT JOIN inward_items ii ON sbi.inward_item_id = ii.id
             WHERE sbi.shipping_bill_id = ?
-            ORDER BY sbi.id
+            ORDER BY bond_expiry ASC, sbi.id ASC
         `, [req.params.id]);
 
         res.json({ ...bill, items });

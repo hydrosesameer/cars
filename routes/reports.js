@@ -352,15 +352,94 @@ router.get('/unique-bond-numbers', async (req, res) => {
     const db = req.app.locals.db;
     const { branch_id } = req.query;
     try {
-        let query = 'SELECT DISTINCT bond_no FROM inward_entries WHERE bond_no IS NOT NULL AND bond_no != ""';
-        let params = [];
+        let query = 'SELECT DISTINCT COALESCE(ii.bond_no, ie.bond_no) as bond_no FROM inward_items ii JOIN inward_entries ie ON ii.inward_id = ie.id WHERE 1=1';
+        const params = [];
         if (branch_id) {
-            query += ' AND branch_id = ?';
+            query += ' AND ie.branch_id = ?';
             params.push(branch_id);
         }
         query += ' ORDER BY bond_no ASC';
         const [rows] = await db.query(query, params);
         res.json(rows.map(r => r.bond_no));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Update Extension Status (Apply or Approved)
+router.put('/update-extension-status', async (req, res) => {
+    const db = req.app.locals.db;
+    const { inward_item_id, status } = req.body;
+
+    if (!inward_item_id || !status) {
+        return res.status(400).json({ error: 'inward_item_id and status are required' });
+    }
+
+    try {
+        await db.query('UPDATE inward_items SET extension_status = ? WHERE id = ?', [status, inward_item_id]);
+        res.json({ message: `Extension status updated to ${status}` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Expiry Alerts for Dashboard
+router.get('/expiry-alerts', async (req, res) => {
+    const db = req.app.locals.db;
+    const { branch_id } = req.query;
+    try {
+        let query = `
+            SELECT * FROM (
+                SELECT ii.id, ii.inward_id, ii.description, ii.qty, ii.extension_status, 
+                       ie.be_no, ie.be_date, 
+                       COALESCE(ii.bond_no, ie.bond_no) as bond_no,
+                       c.airline_code,
+                       c.name as airline_name,
+                       
+                       ie.extended_bonding_expiry3,
+                       ie.extended_bonding_expiry2,
+                       ie.extended_bonding_expiry1,
+                       ie.initial_bonding_expiry,
+                       
+                       -- Determine Active Expiry Date
+                       COALESCE(
+                           ii.bond_expiry, 
+                           ie.extended_bonding_expiry2, 
+                           ie.extended_bonding_expiry1, 
+                           ie.initial_bonding_expiry
+                       ) as active_expiry,
+                       
+                       -- Calculate Days Left
+                       DATEDIFF(
+                           COALESCE(
+                               ii.bond_expiry, 
+                               ie.extended_bonding_expiry2, 
+                               ie.extended_bonding_expiry1, 
+                               ie.initial_bonding_expiry
+                           ), CURDATE()
+                       ) as days_left,
+
+                       -- Calculate Balance Quantity
+                       (ii.qty - COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0)
+                              - COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0)) as available_qty
+                FROM inward_items ii
+                JOIN inward_entries ie ON ii.inward_id = ie.id
+                LEFT JOIN consignments c ON ie.consignment_id = c.id
+                WHERE 1 = 1
+                ${branch_id ? `AND ie.branch_id = ${parseInt(branch_id)}` : ''}
+            ) as stock_calc
+            WHERE available_qty > 0 
+              AND active_expiry IS NOT NULL 
+              AND extended_bonding_expiry3 IS NULL
+              AND (
+                  (days_left BETWEEN 90 AND 100)
+                  OR 
+                  (days_left < 0)
+              )
+            ORDER BY days_left ASC
+        `;
+        const [entries] = await db.query(query);
+        res.json(entries);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -430,6 +509,53 @@ router.get('/stock-report', async (req, res) => {
             entries
         });
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Update Stock Expiries (Bond Expiries and Extended Expiries)
+router.put('/update-expiries', async (req, res) => {
+    const db = req.app.locals.db;
+    const { 
+        inward_item_id, inward_id, 
+        bond_expiry, 
+        initial_bonding_expiry, 
+        extended_bonding_expiry1, 
+        extended_bonding_expiry2, 
+        extended_bonding_expiry3 
+    } = req.body;
+
+    if (!inward_item_id || !inward_id) {
+        return res.status(400).json({ error: 'inward_item_id and inward_id are required' });
+    }
+
+    try {
+        await db.query('START TRANSACTION');
+
+        // Update item-level bond expiry
+        let itemQuery = 'UPDATE inward_items SET bond_expiry = ? WHERE id = ?';
+        await db.query(itemQuery, [bond_expiry || null, inward_item_id]);
+
+        // Update entry-level expiries (affects all items in this entry)
+        let entryQuery = `
+            UPDATE inward_entries 
+            SET initial_bonding_expiry = ?, 
+                extended_bonding_expiry1 = ?, 
+                extended_bonding_expiry2 = ?, 
+                extended_bonding_expiry3 = ? 
+            WHERE id = ?`;
+        await db.query(entryQuery, [
+            initial_bonding_expiry || null,
+            extended_bonding_expiry1 || null,
+            extended_bonding_expiry2 || null,
+            extended_bonding_expiry3 || null,
+            inward_id
+        ]);
+
+        await db.query('COMMIT');
+        res.json({ message: 'Expiries updated successfully' });
+    } catch (error) {
+        await db.query('ROLLBACK');
         res.status(500).json({ error: error.message });
     }
 });

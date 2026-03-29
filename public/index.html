@@ -88,6 +88,32 @@
               </a>
             </div>
 
+            <!-- Expiry Alerts Module -->
+            <div class="card" style="margin-bottom: 2rem; border-left: 4px solid var(--accent-orange);">
+              <div class="card-header">
+                  <h3 class="card-title">
+                    <i class="fas fa-exclamation-triangle" style="color: var(--accent-orange); margin-right: 0.5rem;"></i> Near Expiry (&le; 100 Days)
+                  </h3>
+              </div>
+              <div class="card-body" style="padding: 0; max-height: 400px; overflow-y: auto;">
+                <table class="table" id="expiry-alerts-table">
+                  <thead>
+                    <tr>
+                      <th>Bond Details</th>
+                      <th>Airline</th>
+                      <th>Description</th>
+                      <th>Qty (Bal)</th>
+                      <th>Active Expiry</th>
+                      <th>Days Left</th>
+                    </tr>
+                  </thead>
+                  <tbody id="expiry-alerts-tbody">
+                    <tr><td colspan="6" style="text-align: center; padding: 2rem;">Loading alerts...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <!-- Data Tables Grid -->
             <div class="dashboard-grid">
               <div class="card">
@@ -126,7 +152,7 @@
 
     <!-- App Engine Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
-    <script src="js/app.js?v=60"></script>
+    <script src="js/app.js?v=64"></script>
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
         if (!authCheck()) return;

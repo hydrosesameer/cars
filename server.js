@@ -82,9 +82,17 @@ async function initDB() {
 
         const schemaPath = path.join(__dirname, "database", "schema.sql");
         if (fs.existsSync(schemaPath)) {
-            const schema = fs.readFileSync(schemaPath, "utf8");
-            await pool.query(schema);
-            console.log("✅ Schema check complete");
+            try {
+                const schema = fs.readFileSync(schemaPath, "utf8");
+                await pool.query(schema);
+                console.log("✅ Schema check complete");
+            } catch (err) {
+                if (err.code === 'ER_TABLE_EXISTS_ERROR') {
+                    console.log("✅ Schema existing tables verified.");
+                } else {
+                    console.error("Schema initialization non-fatal error:", err.message);
+                }
+            }
         }
         
         const [rows] = await pool.query("SHOW TABLES LIKE 'items'");
@@ -123,7 +131,9 @@ async function initDB() {
           { table: 'return_stock_entries', column: 'branch_id', sql: 'ALTER TABLE return_stock_entries ADD COLUMN branch_id INT' },
           { table: 'users', column: 'role', sql: "ALTER TABLE users MODIFY COLUMN role ENUM('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER', 'STAFF') NOT NULL DEFAULT 'STAFF'" },
           { table: 'inward_items', column: 'bond_date', sql: 'ALTER TABLE inward_items ADD COLUMN bond_date DATE' },
-          { table: 'inward_items', column: 'bond_expiry', sql: 'ALTER TABLE inward_items ADD COLUMN bond_expiry DATE' }
+          { table: 'inward_items', column: 'bond_expiry', sql: 'ALTER TABLE inward_items ADD COLUMN bond_expiry DATE' },
+          { table: 'branches', column: 'shipping_place', sql: 'ALTER TABLE branches ADD COLUMN shipping_place VARCHAR(255)' },
+          { table: 'inward_items', column: 'extension_status', sql: "ALTER TABLE inward_items ADD COLUMN extension_status ENUM('NONE', 'APPLIED') DEFAULT 'NONE'" }
         ];
 
         for (const m of migrations) {

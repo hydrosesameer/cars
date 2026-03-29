@@ -45,8 +45,14 @@
                   <label>Expiry Date</label>
                   <input type="text" data-datepicker="true" id="stock-filter-expiry" class="form-control" />
                 </div>
-                <!-- Need 1 more gap or just place actions in final columns -->
-                <div class="form-group" style="grid-column: span 3; display: flex; align-items: flex-end; gap: 10px;">
+                <!-- Brand filter for Super Admins -->
+                <div class="form-group" id="branch-filter-group" style="display: none;">
+                  <label>Godown / Branch</label>
+                  <select class="form-control searchable" id="stock-filter-branch">
+                    <option value="">All Branches</option>
+                  </select>
+                </div>
+                <div class="form-group" style="grid-column: span 2; display: flex; align-items: flex-end; gap: 10px;">
                   <button class="btn btn-primary" onclick="loadDetailedStockReport()">Filter</button>
                   <button class="btn btn-secondary" onclick="window.print()">
                     <i class="fas fa-print"></i> Print
@@ -59,13 +65,14 @@
                 <table class="table" id="detailed-stock-table">
                   <thead>
                     <tr>
-                      <th>BE No / Date</th>
-                      <th>Bond No</th>
+                      <th>B.E No.</th>
+                      <th>Bond No.</th>
                       <th>Description</th>
-                      <th>Original Qty</th>
-                      <th>Available Qty</th>
-                      <th>Expiry Date</th>
-                      <th>Consignment</th>
+                      <th>Qty (Rcvd)</th>
+                      <th>Qty (Bal)</th>
+                      <th>Expiry</th>
+                      <th>Airline</th>
+                      <th style="width: 60px;">Actions</th>
                     </tr>
                   </thead>
                   <tbody></tbody>

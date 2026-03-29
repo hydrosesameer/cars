@@ -12,6 +12,7 @@ router.get('/', async (req, res) => {
         let query = `
             SELECT ie.*, c.name as consignment_name,
                    (SELECT GROUP_CONCAT(ii.description) FROM inward_items ii WHERE ii.inward_id = ie.id) as items_list,
+                   (SELECT GROUP_CONCAT(ii.item_id) FROM inward_items ii WHERE ii.inward_id = ie.id) as item_ids,
                    (SELECT SUM(ii.qty) FROM inward_items ii WHERE ii.inward_id = ie.id) as total_qty,
                    COALESCE((SELECT SUM(oi.qty_dispatched) FROM outward_items oi WHERE oi.inward_id = ie.id), 0) as total_dispatched,
                    COALESCE((SELECT SUM(oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_id = ie.id), 0) as total_returned,

@@ -6,6 +6,66 @@ const fs = require('fs');
 
 const upload = multer({ dest: '/tmp/' });
 
+router.post('/items', upload.single('file'), async (req, res) => {
+    const db = req.app.locals.db;
+    
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const results = [];
+    fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', async () => {
+            const connection = await db.getConnection();
+            await connection.beginTransaction();
+
+            try {
+                let processed = 0;
+                let ignored = 0;
+
+                for (const row of results) {
+                    const description = (row.description || '').trim();
+                    if (!description) {
+                        ignored++;
+                        continue;
+                    }
+
+                    // Check if already exists
+                    const [existing] = await connection.query('SELECT id FROM items WHERE description = ?', [description]);
+                    
+                    if (existing.length === 0) {
+                        await connection.query(`
+                            INSERT INTO items (description, unit, hsn_code, category, min_stock)
+                            VALUES (?, ?, ?, ?, ?)
+                        `, [
+                            description, 
+                            row.unit || 'PCS', 
+                            row.hsn_code || null, 
+                            row.category || null, 
+                            parseInt(row.min_stock) || 0
+                        ]);
+                        processed++;
+                    } else {
+                        // Optional: Update existing? For now, just skip/ignore duplicates to keep it safe.
+                        ignored++;
+                    }
+                }
+
+                await connection.commit();
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+                res.json({ message: `Successfully added ${processed} new products. ${ignored} items were skipped (duplicates or empty).` });
+            } catch (error) {
+                await connection.rollback();
+                if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+                res.status(500).json({ error: error.message });
+            } finally {
+                connection.release();
+            }
+        });
+});
+
 router.post('/stock', upload.single('file'), async (req, res) => {
     const db = req.app.locals.db;
     const { branch_id } = req.body;

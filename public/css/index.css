@@ -2297,6 +2297,23 @@ textarea.form-control {
   display: none !important;
 }
 
+/* Tom Select Dropdown Input Plugin Styles */
+.ts-dropdown .dropdown-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 0.6rem 1rem;
+  width: 100%;
+  display: block;
+  outline: none;
+  font-family: inherit;
+  font-size: 0.88rem;
+  background: var(--bg-app);
+  box-sizing: border-box;
+}
+.ts-dropdown .dropdown-input-wrap {
+  display: block;
+}
+
 /* Restoring the dropdown arrow */
 .ts-wrapper.single .ts-control::after {
   content: " ";

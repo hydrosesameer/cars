@@ -119,6 +119,20 @@ window.goToPage = goToPage;
 // Utility Functions
 // ============================================
 
+// Converts date from YYYY-MM-DD or DD/MM/YYYY to YYYY-MM-DD
+function formatDateForDB(dateStr) {
+    if (!dateStr || dateStr.trim() === '') return null;
+    if (dateStr.includes('-')) return dateStr; // Already YYYY-MM-DD
+    if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+            // Assume DD/MM/YYYY
+            return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+    }
+    return dateStr;
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "-";
   return new Date(dateStr).toLocaleDateString("en-GB"); // DD/MM/YYYY
@@ -301,9 +315,12 @@ function initSearchableSelects() {
     // Only apply to selects with options
     if (select.options.length > 0) {
       new TomSelect(select, {
+        plugins: ['clear_button', 'dropdown_input'],
+        searchField: ['text'],
         create: select.hasAttribute('data-create'),
+        allowEmptyOption: true,
         maxOptions: null,
-        dropdownParent: 'body',
+        persist: false,
         sortField: { field: "text", direction: "asc" },
         onChange: function(value) {
             select.dispatchEvent(new Event('change'));
@@ -467,6 +484,11 @@ async function loadDashboard() {
     if (user.role === 'SUPER_ADMIN') {
         renderSuperAdminTools();
     }
+    
+    // Load Expiry Alerts
+    if (document.getElementById("expiry-alerts-table")) {
+        loadExpiryAlerts(branchId);
+    }
 
     const inwardTbody = document.querySelector("#recent-inward-table tbody");
     inwardTbody.innerHTML =
@@ -503,6 +525,147 @@ async function loadDashboard() {
     console.error("Dashboard load error:", error);
   }
 }
+
+async function loadExpiryAlerts(branchId) {
+  try {
+    const data = await apiCall(`/reports/expiry-alerts${branchId ? `?branch_id=${branchId}` : ''}`);
+    const alerts = Array.isArray(data) ? data : [];
+    
+    // Only 90 to 100 days
+    const filtered = alerts.filter(e => e.days_left >= 90 && e.days_left <= 100);
+    const tbody = document.getElementById("expiry-alerts-tbody");
+    
+    if (filtered.length === 0) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #666;">No items expiring within 90-100 days.</td></tr>`;
+      return;
+    }
+
+    if (tbody) {
+      tbody.innerHTML = filtered.map(e => `
+        <tr>
+          <td>${e.be_no || '-'}<br><small>${e.bond_no || '-'}</small></td>
+          <td>${e.airline_code || e.airline_name || '-'}</td>
+          <td>${e.description}</td>
+          <td><strong>${e.available_qty}</strong></td>
+          <td>${formatDate(e.active_expiry)}</td>
+          <td><span style="background: var(--accent-orange); color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px;">Expires in ${e.days_left} Days</span></td>
+        </tr>
+      `).join('');
+    }
+  } catch (error) {
+    console.error("Failed to load expiry alerts:", error);
+    const tbody = document.getElementById("expiry-alerts-tbody");
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: red;">Error loading alerts</td></tr>';
+  }
+}
+
+// ============================================
+// Bond Extensions Management
+// ============================================
+
+window.currentBondExtensions = [];
+
+async function loadBondExtensionsPage() {
+  const user = getAuthUser();
+  const branchFilterEl = document.getElementById("bond-ext-filter-branch");
+  const uiBranchFilter = branchFilterEl ? branchFilterEl.value : '';
+  const branchId = user.role !== 'SUPER_ADMIN' ? (user.branch_id || '') : uiBranchFilter;
+  
+  // Load branch dropdown if Super Admin
+  const branchFilterGroup = document.getElementById("branch-filter-group");
+  if (user.role === 'SUPER_ADMIN' && branchFilterGroup && branchFilterEl) {
+    branchFilterGroup.style.display = 'block';
+    if (branchFilterEl.options.length <= 1) {
+      try {
+        const branches = await apiCall("/branches");
+        branchFilterEl.innerHTML = '<option value="">All Godowns</option>' + branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+      } catch (err) { console.error("Failed to load branches", err); }
+    }
+  }
+
+  try {
+    const data = await apiCall(`/reports/expiry-alerts${branchId ? `?branch_id=${branchId}` : ''}`);
+    window.currentBondExtensions = Array.isArray(data) ? data : [];
+    renderBondExtensions();
+  } catch (error) {
+    console.error("Failed to load bond extensions", error);
+  }
+}
+
+function renderBondExtensions() {
+  const statusFilter = document.getElementById("bond-ext-filter-status")?.value || 'ALL';
+  
+  let filtered = window.currentBondExtensions;
+  
+  if (statusFilter === 'NEAR_EXPIRY') {
+    filtered = filtered.filter(e => e.days_left >= 90 && e.days_left <= 100);
+  } else if (statusFilter === 'EXPIRED') {
+    filtered = filtered.filter(e => e.days_left < 0);
+  } else if (statusFilter === 'APPLIED') {
+    filtered = filtered.filter(e => e.extension_status === 'APPLIED');
+  }
+
+  // Also include items manually marked APPLIED regardless of their days_left filter if user selected ALL
+  
+  paginateTable('bond-extensions-table', filtered, (e) => {
+    let statusHTML = '';
+    let actionHTML = '';
+
+    if (e.extension_status === 'APPLIED') {
+      statusHTML = `<span style="background: var(--accent-purple); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;"><i class="fas fa-lock"></i> Locked: Ext. Applied</span>`;
+      actionHTML = `<button class="btn btn-sm btn-primary" onclick="promptExtensionDate(${e.id}, ${e.inward_id}, '${e.be_no}')"><i class="fas fa-calendar-check"></i> Rx Ext. Date</button>`;
+    } else if (e.days_left < 0) {
+      statusHTML = `<span style="background: var(--accent-red); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">Expired</span>`;
+      actionHTML = `<button class="btn btn-sm btn-outline" style="color: var(--accent-orange); border-color: var(--accent-orange);" onclick="applyExtension(${e.id})"><i class="fas fa-file-signature"></i> Apply Extension</button>`;
+    } else {
+      statusHTML = `<span style="background: var(--accent-orange); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">Expires in ${e.days_left} Days</span>`;
+      actionHTML = `<button class="btn btn-sm btn-outline" style="color: var(--accent-orange); border-color: var(--accent-orange);" onclick="applyExtension(${e.id})"><i class="fas fa-file-signature"></i> Apply Extension</button>`;
+    }
+
+    return `
+      <tr>
+        <td>${e.be_no || '-'}<br><small>${formatDate(e.be_date)}</small></td>
+        <td><strong>${e.bond_no || '-'}</strong></td>
+        <td>${e.airline_code || e.airline_name || '-'}</td>
+        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${e.description}">${e.description}</td>
+        <td><strong>${e.available_qty}</strong></td>
+        <td style="${e.days_left < 0 ? 'color: var(--accent-red); font-weight: bold;' : ''}">${formatDate(e.active_expiry)}</td>
+        <td>${statusHTML}</td>
+        <td style="text-align: right;">${actionHTML}</td>
+      </tr>
+    `;
+  });
+}
+
+window.applyExtension = async function(inward_item_id) {
+  if (!confirm('Are you sure you want to mark this item as "Extension Applied"? It will be LOCKED from all shipping bills and outward entries.')) {
+    return;
+  }
+  
+  try {
+    await apiCall("/reports/update-extension-status", "PUT", { inward_item_id, status: 'APPLIED' });
+    showToast("Stock locked and marked as Extension Applied", "success");
+    loadBondExtensionsPage(); // Refresh
+  } catch (error) {
+    showToast(error.message || "Failed to update status", "error");
+  }
+};
+
+window.promptExtensionDate = function(inwardItem_id, inward_id, be_no) {
+  // Re-use the existing edit modal but force the context of extending
+  const item = window.currentBondExtensions.find(x => x.id === inwardItem_id) || {};
+  window.openStockEditModal({
+    id: inwardItem_id,
+    inward_id: inward_id,
+    be_no: be_no,
+    description: item.description,
+    item_bond_expiry: item.item_bond_expiry || null,
+    initial_bonding_expiry: item.initial_bonding_expiry || null,
+    extended_bonding_expiry1: item.extended_bonding_expiry1 || null,
+    extended_bonding_expiry2: item.extended_bonding_expiry2 || null,
+    extended_bonding_expiry3: item.extended_bonding_expiry3 || null
+  });
+};
 
 // ============================================
 // Damaged Stock
@@ -1654,7 +1817,33 @@ async function viewOutward(id) {
 
 async function loadStockPage() {
   const user = getAuthUser();
-  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
+  const branchFilterGroup = document.getElementById("stock-branch-filter-group");
+  const branchFilterEl = document.getElementById("stock-branch-filter");
+  const pageTitleEl = document.getElementById("stock-page-title");
+  
+  // Show Branch Filter if Super Admin
+  if (user.role === 'SUPER_ADMIN' && branchFilterGroup && branchFilterEl) {
+    branchFilterGroup.style.display = 'block';
+    if (branchFilterEl.options.length <= 1) {
+      try {
+        const branches = await apiCall("/branches");
+        branchFilterEl.innerHTML = '<option value="">All Godowns (Stock Master)</option>' + 
+          branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+        
+        branchFilterEl.onchange = () => {
+          const selectedName = branchFilterEl.options[branchFilterEl.selectedIndex].text;
+          if (pageTitleEl) {
+             pageTitleEl.innerText = branchFilterEl.value ? `Stock Manager: ${selectedName}` : "Current Warehouse Stock";
+          }
+          loadStockPage();
+        };
+      } catch (err) { console.error("Failed to load branches", err); }
+    }
+  }
+
+  const uiBranchFilter = branchFilterEl ? branchFilterEl.value : '';
+  const branchId = user.role !== 'SUPER_ADMIN' ? (user.branch_id || '') : uiBranchFilter;
+
   try {
     const entries = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
     const stockEntries = entries.filter((e) => e.available_stock > 0);
@@ -1685,24 +1874,84 @@ async function loadFormAPage() {
     const itemSelect = document.getElementById("forma-item");
     const bondSelect = document.getElementById("forma-bond");
     if (!itemSelect || !bondSelect) return;
-    const itemOptions = items.map(i => ({ value: i.id, text: i.description }));
-    if (itemSelect.tomselect) {
-      itemSelect.tomselect.clearOptions();
-      itemSelect.tomselect.addOptions(itemOptions);
-    } else {
-      itemSelect.innerHTML = `<option value="">All Items</option>` + items.map(i => `<option value="${i.id}">${i.description}</option>`).join("");
-    }
+
+    // First build the native select list
+    const itemOptions = [{ value: "", text: "All Items" }, ...items.map(i => ({ value: String(i.id), text: i.description }))];
+    itemSelect.innerHTML = itemOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join("");
+    
     const inwardEntries = await apiCall("/inward");
-    const distinctBonds = [...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort();
-    const bondOptions = distinctBonds.map(b => ({ value: b, text: b }));
-    if (bondSelect.tomselect) {
-      bondSelect.tomselect.clearOptions();
-      bondSelect.tomselect.addOptions(bondOptions);
-      bondSelect.tomselect.refreshOptions(false);
-    } else {
-      bondSelect.innerHTML = `<option value="">Search Bond No</option>` + distinctBonds.map(bond => `<option value="${bond}">${bond}</option>`).join("");
+    const bondOptions = [{ value: "", text: "Search Bond No" }, ...[...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort().map(b => ({ value: b, text: b }))];
+    bondSelect.innerHTML = bondOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join("");
+
+    // Now initialize TomSelect
+    initSearchableSelects();
+
+    // Helper to refresh a TomSelect OR normal select
+    const refreshSelect = (el, options, placeholder) => {
+      const allOptions = [{ value: "", text: placeholder }, ...options];
+      if (el.tomselect) {
+        const ts = el.tomselect;
+        const currentVal = ts.getValue();
+        
+        // Block change events while updating options
+        ts.off('change');
+        
+        ts.clearOptions();
+        ts.addOptions(allOptions);
+        
+        // Restore value silently if it's still in the list, otherwise clear it
+        if (currentVal && allOptions.some(o => o.value == currentVal)) {
+          ts.setValue(currentVal, true);
+        } else {
+          ts.setValue("", true);
+        }
+        
+        ts.refreshOptions(false);
+        
+        // Re-attach the change listener
+        ts.on('change', (val) => {
+          updateFilters(el.id === 'forma-item' ? 'item' : 'bond');
+        });
+      } else {
+        el.innerHTML = allOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join("");
+      }
+    };
+
+    // Unified Update Function
+    const updateFilters = (source) => {
+      const selectedItemId = itemSelect.value || (itemSelect.tomselect ? itemSelect.tomselect.getValue() : "");
+      const selectedBondNo = bondSelect.value || (bondSelect.tomselect ? bondSelect.tomselect.getValue() : "");
+
+      // 1. Update Bonds based on Item
+      if (source === 'item') {
+        let filteredBonds = inwardEntries;
+        if (selectedItemId) {
+          filteredBonds = inwardEntries.filter(e => (e.item_ids || "").split(",").includes(selectedItemId));
+        }
+        const distinctBonds = [...new Set(filteredBonds.map(e => e.bond_no).filter(b => b))].sort();
+        refreshSelect(bondSelect, distinctBonds.map(b => ({ value: b, text: b })), "Search Bond No");
+      }
+
+      // 2. Update Items based on Bond
+      if (source === 'bond') {
+        let filteredItems = items;
+        if (selectedBondNo) {
+          const matchingEntry = inwardEntries.find(e => e.bond_no === selectedBondNo);
+          const validItemIds = matchingEntry ? (matchingEntry.item_ids || "").split(",") : [];
+          filteredItems = items.filter(i => validItemIds.includes(String(i.id)));
+        }
+        refreshSelect(itemSelect, filteredItems.map(i => ({ value: String(i.id), text: i.description })), "All Items");
+      }
+    };
+
+    // Attach listeners once at initialization
+    if (itemSelect.tomselect) {
+      itemSelect.tomselect.on('change', () => updateFilters('item'));
     }
-    setTimeout(initSearchableSelects, 100);
+    if (bondSelect.tomselect) {
+      bondSelect.tomselect.on('change', () => updateFilters('bond'));
+    }
+
   } catch (err) { console.error("loadFormAPage error:", err); }
 }
 
@@ -1787,7 +2036,7 @@ async function generateFormA() {
                             <tr>
                                 <th colspan="11" class="text-center" style="font-weight: bold; text-transform: uppercase;">RECEIPTS</th>
                                 <th colspan="11" class="text-center" style="font-weight: bold; text-transform: uppercase;">HANDLING AND STORAGE</th>
-                                <th colspan="10" class="text-center" style="font-weight: bold; text-transform: uppercase;">REMOVAL</th>
+                                <th colspan="11" class="text-center" style="font-weight: bold; text-transform: uppercase;">REMOVAL</th>
                             </tr>
                             <tr class="text-center align-middle" style="text-transform: none !important;">
                                 <!-- Receipts (11 cols) -->
@@ -1827,6 +2076,7 @@ async function generateFormA() {
                                 <th>Balance Qty</th>
                                 <th>Value Rate</th>
                                 <th>Duty Rate</th>
+                                <th style="min-width: 80px;">Remarks</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1882,6 +2132,7 @@ async function generateFormA() {
                                     <td><strong>${balance}</strong></td>
                                     <td>${unitValueRate}</td>
                                     <td>${unitDutyRate}</td>
+                                    <td></td>
                                 </tr>`;
 
                                 // 2. Iterate all transactions (outward, damaged, return)
@@ -1899,10 +2150,13 @@ async function generateFormA() {
                                         <td><strong>${balance}</strong></td>
                                         <td>${unitValueRate}</td>
                                         <td>${unitDutyRate}</td>
+                                        <td></td>
                                     </tr>`;
                                 });
                                 return rows;
                             }).join("")}
+                            <!-- Blank rows for padding end of the page -->
+                            ${Array(15).fill('<tr>' + Array(33).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('')}
                         </tbody>
 
 
@@ -1981,6 +2235,9 @@ async function generateFormB() {
       });
     }
 
+    // Add blank rows for downspace writing on the page
+    tableRows += Array(15).fill('<tr>' + Array(13).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('');
+
     document.getElementById("formb-report-container").innerHTML = `
             <style>
                 .form-b-table th {
@@ -2000,6 +2257,34 @@ async function generateFormB() {
                     width: 100%;
                     border-collapse: collapse;
                     font-family: "Times New Roman", Times, serif;
+                }
+                @media print {
+                    @page { size: A3 landscape; margin: 5mm; }
+                    html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; }
+                    body * { visibility: hidden; }
+                    #formb-report-container, #formb-report-container * { visibility: visible; }
+                    #formb-report-container { 
+                        position: absolute; 
+                        left: 0; 
+                        top: 0; 
+                        width: 100% !important; 
+                        margin: 0 !important; 
+                        padding: 0 !important; 
+                        display: block !important;
+                    }
+                    .form-b-table { 
+                        width: 100% !important; 
+                        min-width: 400mm !important; 
+                        table-layout: auto !important; 
+                        border-collapse: collapse !important;
+                    }
+                    .form-b-table th, .form-b-table td {
+                        font-size: 8pt !important;
+                        padding: 1px !important;
+                        white-space: normal !important;
+                        word-wrap: break-word !important;
+                        border: 1px solid #777 !important;
+                    }
                 }
             </style>
             <div style="width: 100%; font-family: 'Times New Roman', Times, serif; color: black; background: white; padding: 10px;">
@@ -3148,10 +3433,17 @@ async function loadDetailedStockReport() {
   const params = new URLSearchParams();
   const bondNo = document.getElementById("stock-filter-bond")?.value;
   const consignmentId = document.getElementById("stock-filter-consignment")?.value;
+  const user = getAuthUser();
+  
   if (bondNo) params.append("bond_no", bondNo);
   if (consignmentId) params.append("consignment_id", consignmentId);
-  const user = getAuthUser();
-  if (user.role !== 'SUPER_ADMIN' && user.branch_id) params.append("branch_id", user.branch_id);
+  
+  if (user.role !== 'SUPER_ADMIN' && user.branch_id) {
+    params.append("branch_id", user.branch_id);
+  } else if (user.role === 'SUPER_ADMIN') {
+    const branchFilter = document.getElementById("stock-filter-branch")?.value;
+    if (branchFilter) params.append("branch_id", branchFilter);
+  }
   
   const fromDate = document.getElementById("stock-filter-from")?.value;
   const toDate = document.getElementById("stock-filter-to")?.value;
@@ -3178,6 +3470,23 @@ async function loadDetailedStockReport() {
       
       if (consignmentEl.tomselect) {
         consignmentEl.tomselect.sync();
+      }
+    }
+  }
+
+  // Load branches for filter if SUPER_ADMIN
+  const branchFilterGroup = document.getElementById("branch-filter-group");
+  const branchEl = document.getElementById("stock-filter-branch");
+  if (user.role === 'SUPER_ADMIN' && branchFilterGroup && branchEl) {
+    branchFilterGroup.style.display = 'block';
+    if (branchEl.options.length <= 1) {
+      try {
+        const branchList = await apiCall("/branches");
+        branchEl.innerHTML = '<option value="">All Godowns</option>' + 
+          branchList.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
+        if (branchEl.tomselect) branchEl.tomselect.sync();
+      } catch (e) {
+        console.error("Failed to load branches", e);
       }
     }
   }
@@ -3226,12 +3535,103 @@ async function loadDetailedStockReport() {
                 <td class="${e.available_qty < 10 ? "stock-medium" : "stock-high"}"><strong>${e.available_qty}</strong></td>
                 <td>${formatDate(e.initial_bonding_expiry)}</td>
                 <td>${e.consignment_name}</td>
+                <td>
+                  <div class="action-btns">
+                    <button class="action-btn" onclick="openStockEditModal(${JSON.stringify(e).replace(/"/g, '&quot;')})" title="Edit Expiries"><i class="fas fa-edit"></i></button>
+                  </div>
+                </td>
             </tr>
         `, 7);
   } catch (error) {
     console.error("Detailed stock error:", error);
   }
 }
+
+window.openStockEditModal = function(item) {
+  // Add direct value checks to debug why they are blank in the UI
+  // Ensure we map standard bond_expiry if item_bond_expiry is missing
+  const bondExpiry = item.item_bond_expiry || item.bond_expiry;
+
+  const body = `
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Bond Expiry (Item Level)</label>
+        <input type="text" ${bondExpiry ? 'readonly style="background-color: var(--bg-hover); cursor: not-allowed;"' : 'data-datepicker="true"'} class="form-control" id="edit-stock-bond-expiry" value="${bondExpiry ? formatDate(bondExpiry) : ""}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Extended Bonding Expiry 1</label>
+        <input type="text" ${item.extended_bonding_expiry1 && item.extended_bonding_expiry1 !== '-' ? 'readonly style="background-color: var(--bg-hover); cursor: not-allowed;"' : 'data-datepicker="true"'} class="form-control" id="edit-stock-ext1" value="${item.extended_bonding_expiry1 && item.extended_bonding_expiry1 !== '-' ? formatDate(item.extended_bonding_expiry1) : ""}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Extended Bonding Expiry 2</label>
+        <input type="text" ${item.extended_bonding_expiry2 && item.extended_bonding_expiry2 !== '-' ? 'readonly style="background-color: var(--bg-hover); cursor: not-allowed;"' : 'data-datepicker="true"'} class="form-control" id="edit-stock-ext2" value="${item.extended_bonding_expiry2 && item.extended_bonding_expiry2 !== '-' ? formatDate(item.extended_bonding_expiry2) : ""}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Extended Bonding Expiry 3</label>
+        <input type="text" ${item.extended_bonding_expiry3 && item.extended_bonding_expiry3 !== '-' ? 'readonly style="background-color: var(--bg-hover); cursor: not-allowed;"' : 'data-datepicker="true"'} class="form-control" id="edit-stock-ext3" value="${item.extended_bonding_expiry3 && item.extended_bonding_expiry3 !== '-' ? formatDate(item.extended_bonding_expiry3) : ""}">
+      </div>
+    </div>
+    <div style="margin-top: 15px; font-size: 13px; color: #666;">
+      <p><i class="fas fa-info-circle"></i> Modifying extended expiries updates the <strong>entire shipment entry</strong> (BE No: ${item.be_no}).</p>
+    </div>
+  `;
+  
+  openModal(
+    `Edit Expiries - ${item.description}`,
+    body,
+    `
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveExpiriesEdit(${item.id}, ${item.inward_id})">Save Changes</button>
+    `
+  );
+  initDatepickers();
+};
+
+window.saveExpiriesEdit = async function(inward_item_id, inward_id) {
+  const getVal = (id) => {
+    const el = document.getElementById(id);
+    return el ? formatDateForDB(el.value) : undefined;
+  };
+
+  const data = {
+    inward_item_id,
+    inward_id,
+    bond_expiry: getVal('edit-stock-bond-expiry'),
+    initial_bonding_expiry: getVal('edit-stock-initial-expiry'),
+    extended_bonding_expiry1: getVal('edit-stock-ext1'),
+    extended_bonding_expiry2: getVal('edit-stock-ext2'),
+    extended_bonding_expiry3: getVal('edit-stock-ext3')
+  };
+  
+  // Clean undefined keys so they don't overwrite if not in modal
+  Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
+  
+  try {
+    // 1. Update the dates
+    await apiCall("/reports/update-expiries", "PUT", data);
+    
+    // 2. Automatically unlock status (set to NONE) if it was APPLIED
+    try {
+      await apiCall("/reports/update-extension-status", "PUT", { inward_item_id, status: 'NONE' });
+    } catch(e) { console.warn("Optional status unlock skipped", e); }
+
+    showToast("Expiries updated and stock unlocked!", "success");
+    closeModal();
+
+    // 3. Conditional reloads based on current page
+    if (document.getElementById("detailed-stock-table")) {
+      loadDetailedStockReport();
+    }
+    if (window.location.pathname.includes('bond-extensions.html')) {
+      loadBondExtensionsPage();
+    }
+    if (typeof loadDetailedStock === 'function') {
+      loadDetailedStock();
+    }
+  } catch (error) {
+    showToast(error.message || "Failed to update expiries", "error");
+  }
+};
 
 async function openLedgerModal(type, id, reference) {
   try {
@@ -3310,14 +3710,19 @@ async function openLedgerModal(type, id, reference) {
 // Initialize Flatpickr for futuristic date pickers
 function initFlatpickr() {
   if (typeof flatpickr !== 'undefined') {
-    flatpickr('input[type="date"]:not(.flatpickr-input)', {
+    flatpickr('input[type="date"]:not(.flatpickr-input), input[data-datepicker="true"]', {
       allowInput: true,
-      dateFormat: "Y-m-d",
-      disableMobile: true, // Use Flatpickr UI instead of native mobile picker
+      dateFormat: "Y-m-d", // Standard DB format
+      altInput: true,
+      altFormat: "d/m/Y", // Visual display format as requested
+      disableMobile: true,
       theme: "dark"
     });
   }
 }
+
+// Global alias for modal calls
+window.initDatepickers = initFlatpickr;
 
 // ============================================
 // Item Selection Modal Logic
@@ -4970,6 +5375,78 @@ async function submitBulkUpload() {
     }
 }
 
+// ================= Bulk Product Upload =================
+async function openItemBulkUploadModal() {
+    const body = `
+        <div class="form-group" style="margin-top: 15px">
+            <label class="form-label">CSV File *</label>
+            <input type="file" class="form-control" id="bulk-item-file" accept=".csv">
+            <p class="help-text" style="margin-top: 5px; font-size: 12px; color: #666;">
+                Make sure to use the <a href="javascript:void(0)" onclick="downloadItemSampleCSV()" style="color: var(--primary-color); text-decoration: underline;">Sample CSV format</a>.
+            </p>
+        </div>
+    `;
+    openModal("Bulk Product Upload", body, `
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitItemBulkUpload()">Start Upload</button>
+    `, "active");
+}
+
+async function submitItemBulkUpload() {
+    const fileInput = document.getElementById('bulk-item-file');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        showToast("Please select a CSV file", "warning");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const uploadBtn = document.querySelector('.modal-footer .btn-primary');
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+
+        const res = await fetch('/api/bulk-upload/items', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await res.json();
+        if (res.ok) {
+            showToast(result.message, 'success');
+            closeModal();
+            if (typeof loadItemsPage === 'function') loadItemsPage();
+        } else {
+            showToast(result.error || 'Upload failed', 'error');
+            uploadBtn.disabled = false;
+            uploadBtn.innerText = 'Start Upload';
+        }
+    } catch (err) {
+        showToast('Upload failed: ' + err.message, 'error');
+    }
+}
+
+function downloadItemSampleCSV() {
+  const headers = ['description', 'unit', 'hsn_code', 'category', 'min_stock'];
+  const sampleData = [
+    ['JOHNNIE WALKER BLACK LABEL 75CL', 'BTL', '220830', 'WHISKY', '10'],
+    ['MARLBORO GOLD 200S', 'CTN', '240220', 'CIGARETTES', '5']
+  ];
+  
+  let csvContent = headers.join(',') + '\n' + sampleData.map(row => row.join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.setAttribute('hidden', '');
+  a.setAttribute('href', url);
+  a.setAttribute('download', 'sample_product_upload.csv');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 async function handleBulkStockUpload(input) {
     // Deprecated in favor of openBulkUploadModal
     console.warn('handleBulkStockUpload is deprecated. Use openBulkUploadModal instead.');
@@ -5093,6 +5570,7 @@ function initNavigation() {
               ${user.role === 'SUPER_ADMIN' ? `
                 <div class="nav-label">Inventory View</div>
                 <a href="stock.html" class="nav-item ${window.location.pathname.endsWith('stock.html') ? 'active' : ''}"><i class="fas fa-boxes"></i> <span>Stock Master</span></a>
+                <a href="bond-extensions.html" class="nav-item ${window.location.pathname.endsWith('bond-extensions.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Bond Extensions</span></a>
                 
                 <div class="nav-label">Master Data</div>
                 <a href="items.html" class="nav-item"><i class="fas fa-wine-bottle"></i> <span>Product Master</span></a>
@@ -5110,6 +5588,9 @@ function initNavigation() {
                 <a href="damaged.html" class="nav-item ${window.location.pathname.endsWith('damaged.html') ? 'active' : ''}"><i class="fas fa-heart-broken"></i> <span>Damaged Stock</span></a>
                 <a href="return-stock.html" class="nav-item ${window.location.pathname.endsWith('return-stock.html') ? 'active' : ''}"><i class="fas fa-undo"></i> <span>Return Stock</span></a>
                 
+                <div class="nav-label">Tasks & Alerts</div>
+                <a href="bond-extensions.html" class="nav-item ${window.location.pathname.endsWith('bond-extensions.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Bond Extensions</span></a>
+
                 <div class="nav-label">Reports</div>
                 <a href="form-a.html" class="nav-item ${window.location.pathname.endsWith('form-a.html') ? 'active' : ''}"><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a>
                 <a href="form-b.html" class="nav-item ${window.location.pathname.endsWith('form-b.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>

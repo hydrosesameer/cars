@@ -20,7 +20,12 @@
         <header class="top-bar" id="top-bar-container"></header>
         <div class="content-body">
           <div class="page-header">
-            <h1 class="page-title">Current Warehouse Stock</h1>
+            <h1 class="page-title" id="stock-page-title">Current Warehouse Stock</h1>
+            <div class="filter-group" id="stock-branch-filter-group" style="display: none; margin-left: 20px;">
+              <select id="stock-branch-filter" class="form-control" style="width: 200px;">
+                <option value="">All Godowns</option>
+              </select>
+            </div>
             <div class="action-btns">
               <button class="btn btn-secondary" onclick="downloadSampleCSV()">
                 <i class="fas fa-download"></i> Sample CSV
