@@ -2080,7 +2080,9 @@ async function generateFormA() {
                             </tr>
                         </thead>
                         <tbody>
-                            ${data.entries.map(entry => {
+                            ${(function() {
+                                let totalRowsCount = 0;
+                                const dataRowsStr = data.entries.map(entry => {
                                 let rows = '';
                                 let balance = entry.qty_received; // Item level initial balance
                                 const removals = entry.outward_entries || [];
@@ -2153,10 +2155,13 @@ async function generateFormA() {
                                         <td></td>
                                     </tr>`;
                                 });
+                                totalRowsCount += 1 + removals.length;
                                 return rows;
-                            }).join("")}
-                            <!-- Blank rows for padding end of the page -->
-                            ${Array(15).fill('<tr>' + Array(33).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('')}
+                            }).join("");
+                            const emptyRowsCount = Math.max(0, 15 - totalRowsCount);
+                            const emptyPaddingStr = Array(emptyRowsCount).fill('<tr>' + Array(33).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('');
+                            return dataRowsStr + emptyPaddingStr;
+                        })()}
                         </tbody>
 
 
@@ -2213,9 +2218,12 @@ async function generateFormB() {
     const qtyDateStr = `${lastDay}.${String(data.month).padStart(2, '0')}.${data.year}`;
 
     let tableRows = "";
+    let totalFormBRows = 0;
     for (const [consignment, entries] of Object.entries(data.grouped_entries)) {
       tableRows += `<tr><td colspan="13" style="text-align: center; font-weight: bold;">${consignment}</td></tr>`;
+      totalFormBRows += 1;
       entries.forEach((e) => {
+        totalFormBRows += 1;
         const valRate = e.value_rate ? Number(e.value_rate).toFixed(2) : (e.total_value && e.total_qty_received ? (e.total_value / e.total_qty_received).toFixed(2) : "");
         tableRows += `<tr style="text-align: center; vertical-align: middle;">
           <td>${e.be_no || "Multiple"}/${formatDate(e.be_date)}</td>
@@ -2235,8 +2243,9 @@ async function generateFormB() {
       });
     }
 
+    const formBEmptyRows = Math.max(0, 15 - totalFormBRows);
     // Add blank rows for downspace writing on the page
-    tableRows += Array(15).fill('<tr>' + Array(13).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('');
+    tableRows += Array(formBEmptyRows).fill('<tr>' + Array(13).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('');
 
     document.getElementById("formb-report-container").innerHTML = `
             <style>
