@@ -315,7 +315,7 @@ function initSearchableSelects() {
     // Only apply to selects with options
     if (select.options.length > 0) {
       new TomSelect(select, {
-        plugins: ['clear_button'],
+        plugins: ['clear_button', 'dropdown_input'], // Restored type-to-search dropdown plugin
         searchField: ['text'],
         create: select.hasAttribute('data-create'),
         allowEmptyOption: true,
@@ -324,6 +324,22 @@ function initSearchableSelects() {
         sortField: { field: "text", direction: "asc" },
         onChange: function(value) {
             select.dispatchEvent(new Event('change'));
+        },
+        onDropdownOpen: function() {
+            // Fixes "goes under section" overlapping bugs robustly across all forms
+            const container = this.wrapper.closest('.card, .form-section');
+            if (container) {
+                container.style.position = 'relative';
+                container.style.zIndex = '10002';
+                container.style.overflow = 'visible';
+            }
+        },
+        onDropdownClose: function() {
+            const container = this.wrapper.closest('.card, .form-section');
+            if (container) {
+                container.style.zIndex = '';
+                container.style.overflow = '';
+            }
         }
       });
     }
@@ -1876,10 +1892,12 @@ async function loadFormAPage() {
     if (!itemSelect || !bondSelect) return;
 
     // First build the native select list
+    if (itemSelect.tomselect) itemSelect.tomselect.destroy();
     const itemOptions = [{ value: "", text: "All Items" }, ...items.map(i => ({ value: String(i.id), text: i.description }))];
     itemSelect.innerHTML = itemOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join("");
     
     const inwardEntries = await apiCall("/inward");
+    if (bondSelect.tomselect) bondSelect.tomselect.destroy();
     const bondOptions = [{ value: "", text: "Search Bond No" }, ...[...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort().map(b => ({ value: b, text: b }))];
     bondSelect.innerHTML = bondOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join("");
 
@@ -2182,6 +2200,7 @@ async function loadFormBPage() {
   try {
     if (consignments.length === 0) consignments = await apiCall("/consignments");
     const airlineSelect = document.getElementById("formb-airline");
+    if (airlineSelect.tomselect) airlineSelect.tomselect.destroy();
     airlineSelect.innerHTML = '<option value="">All Airlines</option>' + 
       consignments.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
       
