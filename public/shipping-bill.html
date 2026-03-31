@@ -18,34 +18,77 @@
       <main class="main-content">
         <header class="top-bar" id="top-bar-container"></header>
         <div class="content-body">
-          <div class="page-header">
-              <h1 class="page-title">Shipping Bills</h1>
-              <button class="btn btn-primary" onclick="window.location.href='shipping-bill-entry.html'">
-                <i class="fas fa-plus"></i> New Shipping Bill
-              </button>
-            </div>
-            <div class="card">
-              <div class="card-body" style="padding: 0">
-                <table class="table" id="shipping-bills-table">
-                  <thead>
-                    <tr>
-                      <th>SB No</th>
-                      <th>Date</th>
-                      <th>Flight No</th>
-                      <th>Airline</th>
-                      <th>Items</th>
-                      <th>Total Qty</th>
-                      <th>Total Value</th>
-                      <th>Total Duty</th>
-                      <th>Status</th>
-                      <th>Remarks</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
+            <div class="page-header">
+              <h1 class="page-title">External Transfer Annexure</h1>
+              <div class="page-actions">
+                <button class="btn btn-secondary" onclick="window.location.href='outward-entry.html?nature=Transfer'">
+                  <i class="fas fa-plus"></i> New External Transfer
+                </button>
+                <button class="btn btn-primary" onclick="window.location.href='shipping-bill-entry.html'">
+                  <i class="fas fa-plus"></i> New Shipping Bill
+                </button>
               </div>
             </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav" style="margin-bottom: 1.5rem; border-bottom: 2px solid var(--border); display: flex; gap: 2rem;">
+              <button class="tab-btn active" id="tab-sb" onclick="switchTransferTab('sb')" style="padding: 0.75rem 0.5rem; background: none; border: none; border-bottom: 3px solid var(--accent-blue); color: var(--accent-blue); font-weight: 600; cursor: pointer;">
+                <i class="fas fa-file-export"></i> Shipping Bills
+              </button>
+              <button class="tab-btn" id="tab-et" onclick="switchTransferTab('et')" style="padding: 0.75rem 0.5rem; background: none; border: none; border-bottom: 3px solid transparent; color: var(--text-muted); font-weight: 500; cursor: pointer;">
+                <i class="fas fa-exchange-alt"></i> External Transfer Outward
+              </button>
+            </div>
+
+            <!-- Shipping Bills View -->
+            <div id="view-sb" class="transfer-view">
+              <div class="card">
+                <div class="card-body" style="padding: 0">
+                  <table class="table" id="shipping-bills-table">
+                    <thead>
+                      <tr>
+                        <th>SB No</th>
+                        <th>Date</th>
+                        <th>Flight No</th>
+                        <th>Airline</th>
+                        <th>Items</th>
+                        <th>Total Qty</th>
+                        <th>Total Value</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- External Transfer View -->
+            <div id="view-et" class="transfer-view" style="display: none;">
+              <div class="card">
+                <div class="card-body" style="padding: 0">
+                  <table class="table" id="external-transfers-table">
+                    <thead>
+                      <tr>
+                        <th>Transfer Date</th>
+                        <th>Bond No</th>
+                        <th>Flight No</th>
+                        <th>Destination</th>
+                        <th>Total Items</th>
+                        <th>Total Qty</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hidden Report Container for Printing -->
+            <div id="external-transfer-report-container" class="report-print-container" style="display: none;"></div>
         </div>
       </main>
     </div>

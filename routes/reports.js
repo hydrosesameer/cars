@@ -854,4 +854,33 @@ router.get('/dashboard', async (req, res) => {
     }
 });
 
+// Get External Transfer (Annexure) entries
+router.get('/external-transfers', async (req, res) => {
+    const db = req.app.locals.db;
+    const { branch_id } = req.query;
+    try {
+        let query = `
+            SELECT oe.*, c.name as consignment_name,
+                   (SELECT GROUP_CONCAT(oi.description) FROM outward_items oi WHERE oi.outward_id = oe.id) as items_list,
+                   (SELECT COUNT(*) FROM outward_items oi WHERE oi.outward_id = oe.id) as item_count,
+                   (SELECT bond_no FROM inward_entries ie WHERE ie.id = oe.inward_id) as inward_bond_no,
+                   (SELECT be_no FROM inward_entries ie WHERE ie.id = oe.inward_id) as inward_be_no,
+                   (SELECT be_date FROM inward_entries ie WHERE ie.id = oe.inward_id) as inward_be_date
+            FROM outward_entries oe
+            LEFT JOIN consignments c ON oe.consignment_id = c.id
+            WHERE oe.nature_of_removal = 'Transfer'
+        `;
+        let params = [];
+        if (branch_id) {
+            query += ' AND oe.branch_id = ?';
+            params.push(branch_id);
+        }
+        query += ' ORDER BY oe.dispatch_date DESC';
+        const [entries] = await db.query(query, params);
+        res.json(entries);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;

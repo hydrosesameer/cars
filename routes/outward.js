@@ -87,7 +87,12 @@ router.get('/:id', async (req, res) => {
         const entry = entries[0];
         
         const [items] = await db.query(`
-            SELECT oi.*, COALESCE(ii.bond_no, ie.bond_no) as bond_no, COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry) AS bond_expiry, ii.description as item_description, ii.qty as original_qty
+            SELECT oi.*, 
+                   COALESCE(ii.bond_no, ie.bond_no) as bond_no, 
+                   COALESCE(ii.bond_date, ie.bond_date) as bond_date,
+                   ie.be_no, ie.be_date,
+                   COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry) AS bond_expiry, 
+                   ii.description as item_description, ii.qty as original_qty
             FROM outward_items oi
             JOIN inward_entries ie ON oi.inward_id = ie.id
             JOIN inward_items ii ON oi.inward_item_id = ii.id
@@ -106,7 +111,7 @@ router.post('/', async (req, res) => {
     const { 
         dispatch_date, flight_no, consignment_id, shipping_bill_no, shipping_bill_date,
         registration_no_of_means_of_transport, nature_of_removal, purpose, otl_no,
-        remarks, items, branch_id
+        remarks, items, branch_id, to_warehouse
     } = req.body;
 
     const connection = await db.getConnection();
@@ -150,12 +155,12 @@ router.post('/', async (req, res) => {
             INSERT INTO outward_entries (
                 dispatch_date, flight_no, consignment_id, shipping_bill_no, shipping_bill_date,
                 registration_no_of_means_of_transport, nature_of_removal, purpose, otl_no,
-                total_dispatched, value, duty, remarks, inward_id, branch_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                total_dispatched, value, duty, remarks, inward_id, branch_id, to_warehouse
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             dispatch_date, flight_no, consignment_id || null, shipping_bill_no || null, shipping_bill_date || null,
             registration_no_of_means_of_transport || null, nature_of_removal || 'Re-export', purpose || 'Re-export', otl_no || null,
-            totalQty, totalValue, totalDuty, remarks || null, primaryInwardId, branch_id || null
+            totalQty, totalValue, totalDuty, remarks || null, primaryInwardId, branch_id || null, to_warehouse || null
         ]);
 
         const outwardId = result.insertId;

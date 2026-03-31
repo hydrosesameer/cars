@@ -34,6 +34,7 @@ let inwardEntries = [];
 let outwardEntries = [];
 let inwardItemsTemp = []; // Temp storage for multi-item form
 let outwardItemsTemp = []; // Temp storage for multi-item form
+let availableInwardItems = []; // Declaring missing global
 
 // ============================================
 // Pagination Utility
@@ -372,7 +373,6 @@ function loadFlatpickrAndInit() {
   } else {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
-    script.onload = initDatePickers;
     document.head.appendChild(script);
     
     if (!document.querySelector('link[href*="flatpickr"]')) {
@@ -1403,7 +1403,7 @@ async function loadOutwardEntries() {
   }
 }
 
-let availableInwardItems = [];
+
 
 async function openOutwardModal() {
   if (consignments.length === 0) consignments = await apiCall("/consignments");
@@ -1586,51 +1586,70 @@ function removeOutwardItem(idx) {
   renderOutwardItems();
 }
 
-async function saveOutward() {
-  const data = {
-    dispatch_date: document.getElementById("out-date").value,
-    flight_no: document.getElementById("out-flight").value,
-    consignment_id: document.getElementById("out-consignment").value || null,
-    shipping_bill_no: document.getElementById("out-sb-no").value,
-    shipping_bill_date: document.getElementById("out-sb-date").value,
-    purpose: document.getElementById("out-purpose").value,
-    remarks: document.getElementById("out-remarks").value,
-    authorised_by: getAuthUser().username,
-    items: outwardItemsTemp,
-    branch_id: getAuthUser().branch_id
-  };
+async function saveOutwardPage() {
+    const data = {
+      dispatch_date: document.getElementById("out-date").value,
+      flight_no: document.getElementById("out-flight").value,
+      nature_of_removal: document.getElementById("out-removal-nature").value,
+      to_warehouse: document.getElementById("out-to-warehouse").value,
+      shipping_bill_no: document.getElementById("out-sb-no").value,
+      shipping_bill_date: document.getElementById("out-sb-date").value,
+      registration_no_of_means_of_transport: document.getElementById("out-transport-reg").value,
+      consignment_id: document.getElementById("out-consignment").value || null,
+      remarks: document.getElementById("out-remarks").value,
+      items: outwardItemsTemp,
+      branch_id: getAuthUser().branch_id
+    };
 
-  if (!data.dispatch_date) {
-    showToast("Dispatch date required", "error");
-    return;
-  }
-  if (data.items.length === 0) {
-    showToast("Please add at least one item", "error");
-    return;
-  }
-
-  // Validate quantities
-  for (const item of data.items) {
-    if (!item.inward_item_id) {
-      showToast("Please select source for all items", "error");
+    if (!data.dispatch_date) {
+      showToast("Dispatch date required", "error");
       return;
     }
-    if (item.qty_dispatched > item.available_qty) {
-      showToast(`Quantity exceeds available (${item.available_qty})`, "error");
+    if (data.items.length === 0) {
+      showToast("Please add at least one item", "error");
       return;
     }
-  }
 
-  try {
-    await apiCall("/outward", "POST", data);
-    showToast("Dispatch created with " + data.items.length + " items");
-    closeModal();
-    loadOutwardEntries();
-    loadInwardEntries();
-  } catch (error) {
-    console.error("Save outward error:", error);
+    // Validate quantities
+    for (const item of data.items) {
+      if (!item.inward_item_id) {
+        showToast("Please select source for all items", "error");
+        return;
+      }
+      if (item.qty_dispatched > item.available_qty) {
+        showToast(`Quantity exceeds available (${item.available_qty})`, "error");
+        return;
+      }
+    }
+
+    try {
+      await apiCall("/outward", "POST", data);
+      showToast("Dispatch created with " + data.items.length + " items");
+      navigateTo('outward');
+    } catch (error) {
+      console.error("Save outward error:", error);
+    }
+}
+
+function toggleTransferFields() {
+  const natureSelect = document.getElementById("out-removal-nature");
+  if (!natureSelect) return;
+  
+  const nature = natureSelect.value;
+  const transferFields = document.getElementById("transfer-extra-fields");
+  const sbGroup = document.getElementById("shipping-bill-group");
+  
+  console.log("Toggling fields for nature:", nature);
+  
+  if (nature === 'Transfer') {
+    if (transferFields) transferFields.style.display = 'block';
+    if (sbGroup) sbGroup.style.display = 'none';
+  } else {
+    if (transferFields) transferFields.style.display = 'none';
+    if (sbGroup) sbGroup.style.display = 'grid';
   }
 }
+window.toggleTransferFields = toggleTransferFields;
 
 async function quickOutward(inwardId) {
   // Get stock for this inward entry
@@ -2373,59 +2392,282 @@ var currentShippingBillId = null;
 async function loadShippingBillsListPage() {
   const user = getAuthUser();
   const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
+  
+  // Handle tab from URL
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get('tab');
+  if (tabParam === 'et' && document.getElementById('tab-et') && !document.getElementById('tab-et').classList.contains('active')) {
+    // We need to switch tab without triggering a reload loop
+    // switchTransferTab calls loadShippingBillsListPage again, so we just set the classes 
+    // and continue the logic for 'et'
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('tab-et').classList.add('active');
+    document.querySelectorAll('.transfer-view').forEach(view => view.style.display = 'none');
+    document.getElementById('view-et').style.display = 'block';
+  }
+
+  // Find which tab is active
+  const activeTab = document.querySelector('.tab-btn.active')?.id || 'tab-sb';
+  
+  if (activeTab === 'tab-sb') {
+    try {
+      const bills = await apiCall(`/shipping-bills${branchId ? `?branch_id=${branchId}` : ''}`);
+      const canApprove = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'].includes(user.role);
+      const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role);
+
+      paginateTable('shipping-bills-table', bills, (e) => {
+        const isUnapproved = e.status === 'DRAFT' && e.unapproved_remarks;
+        const statusText = isUnapproved ? 'UNAPPROVED' : e.status;
+        const statusClass = isUnapproved ? 'badge-danger' : getStatusBadge(e.status);
+
+        return `
+        <tr>
+          <td><strong>${e.sb_no}</strong></td>
+          <td>${formatDate(e.sb_date)}</td>
+          <td>${e.flight_no || '-'}</td>
+          <td>${e.consignment_name || '-'}</td>
+          <td>${e.item_count || 0}</td>
+          <td class="stock-medium">${(e.total_qty || 0).toLocaleString()}</td>
+          <td>₹${(e.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+          <td>
+            <span class="badge ${statusClass}">${statusText}</span>
+          </td>
+          <td>
+            <div class="action-btns">
+              ${(e.status === 'DRAFT' && canApprove) ? `<button class="action-btn success" onclick="approveShippingBill(${e.id})" title="Approve"><i class="fas fa-check"></i></button>` : ''}
+              ${(e.status === 'DRAFT' && isAdmin) ? `<button class="action-btn warning" onclick="rejectShippingBill(${e.id})" title="Not Approved"><i class="fas fa-times-circle"></i></button>` : ''}
+              ${(e.status === 'APPROVED' && isAdmin) ? `<button class="action-btn warning" onclick="unapproveShippingBill(${e.id})" title="Unapprove"><i class="fas fa-undo"></i></button>` : ''}
+              ${(e.status === 'DRAFT') ? `<button class="action-btn primary" onclick="window.location.href='shipping-bill-entry.html?id=${e.id}'" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
+              <button class="action-btn info" onclick="viewShippingBill(${e.id})" title="View Details"><i class="fas fa-eye"></i></button>
+              <button class="action-btn secondary" onclick="printShippingBill(${e.id})" title="Print"><i class="fas fa-print"></i></button>
+              ${(() => {
+                  if (e.status !== 'DRAFT' || !isAdmin) return '';
+                  const createdDate = new Date(e.created_at);
+                  const now = new Date();
+                  const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
+                  if (diffDays <= 3) {
+                      return `<button class="action-btn danger" onclick="deleteShippingBill(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
+                  }
+                  return '';
+              })()}
+            </div>
+          </td>
+        </tr>
+      `;
+      }, 9);
+    } catch (error) {
+      console.error("Error loading shipping bills:", error);
+    }
+  } else {
+    await loadExternalTransfersListPage();
+  }
+}
+
+async function loadExternalTransfersListPage() {
+  const user = getAuthUser();
+  const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
   try {
-    const bills = await apiCall(`/shipping-bills${branchId ? `?branch_id=${branchId}` : ''}`);
-    const canApprove = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'].includes(user.role);
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role);
-
-    paginateTable('shipping-bills-table', bills, (e) => {
-      const isUnapproved = e.status === 'DRAFT' && e.unapproved_remarks;
-      const statusText = isUnapproved ? 'UNAPPROVED' : e.status;
-      const statusClass = isUnapproved ? 'badge-danger' : getStatusBadge(e.status);
-
-      return `
+    const entries = await apiCall(`/reports/external-transfers${branchId ? `?branch_id=${branchId}` : ''}`);
+    paginateTable('external-transfers-table', entries, (e) => `
       <tr>
-        <td><strong>${e.sb_no}</strong></td>
-        <td>${formatDate(e.sb_date)}</td>
+        <td>${formatDate(e.dispatch_date)}</td>
+        <td><strong>${e.inward_bond_no || '-'}</strong></td>
         <td>${e.flight_no || '-'}</td>
-        <td>${e.consignment_name || '-'}</td>
+        <td title="${e.to_warehouse || ''}">${e.to_warehouse ? (e.to_warehouse.substring(0, 30) + (e.to_warehouse.length > 30 ? '...' : '')) : '-'}</td>
         <td>${e.item_count || 0}</td>
-        <td class="stock-medium">${(e.total_qty || 0).toLocaleString()}</td>
-        <td>₹${(e.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-        <td>₹${(e.total_duty || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-        <td>
-          <span class="badge ${statusClass}">${statusText}</span>
-        </td>
-        <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${e.unapproved_remarks || e.remarks || ''}">
-          ${e.unapproved_remarks || e.remarks || '-'}
-        </td>
+        <td class="stock-high"><strong>${(e.total_dispatched || 0).toLocaleString()}</strong></td>
+        <td><span class="badge badge-info">TRANSFER</span></td>
         <td>
           <div class="action-btns">
-            ${(e.status === 'DRAFT' && canApprove) ? `<button class="action-btn success" onclick="approveShippingBill(${e.id})" title="Approve"><i class="fas fa-check"></i></button>` : ''}
-            ${(e.status === 'DRAFT' && isAdmin) ? `<button class="action-btn warning" onclick="rejectShippingBill(${e.id})" title="Not Approved"><i class="fas fa-times-circle"></i></button>` : ''}
-            ${(e.status === 'APPROVED' && isAdmin) ? `<button class="action-btn warning" onclick="unapproveShippingBill(${e.id})" title="Unapprove"><i class="fas fa-undo"></i></button>` : ''}
-            ${(e.status === 'DRAFT') ? `<button class="action-btn primary" onclick="window.location.href='shipping-bill-entry.html?id=${e.id}'" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
-            <button class="action-btn info" onclick="viewShippingBill(${e.id})" title="View Details"><i class="fas fa-eye"></i></button>
-            <button class="action-btn secondary" onclick="printShippingBill(${e.id})" title="Print"><i class="fas fa-print"></i></button>
-            ${(() => {
-                if (e.status !== 'DRAFT' || !isAdmin) return '';
-                const createdDate = new Date(e.created_at);
-                const now = new Date();
-                const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
-                if (diffDays <= 3) {
-                    return `<button class="action-btn danger" onclick="deleteShippingBill(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
-                }
-                return '';
-            })()}
+            <button class="action-btn info" onclick="viewOutward(${e.id})" title="View Items"><i class="fas fa-eye"></i></button>
+            <button class="action-btn secondary" onclick="printExternalTransferAnnexure(${e.id})" title="Print Transfer Form"><i class="fas fa-print"></i></button>
           </div>
         </td>
       </tr>
-    `;
-    }, 10);
+    `, 8);
   } catch (error) {
-    console.error("Error loading shipping bills:", error);
+    console.error("Error loading external transfers:", error);
   }
 }
+
+function switchTransferTab(tabId) {
+  // Update Buttons
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+    btn.style.borderBottomColor = 'transparent';
+    btn.style.color = 'var(--text-muted)';
+    btn.style.fontWeight = '500';
+  });
+  
+  const activeBtn = document.getElementById(`tab-${tabId}`);
+  activeBtn.classList.add('active');
+  activeBtn.style.borderBottomColor = 'var(--accent-blue)';
+  activeBtn.style.color = 'var(--accent-blue)';
+  activeBtn.style.fontWeight = '600';
+  
+  // Show Views
+  document.querySelectorAll('.transfer-view').forEach(view => view.style.display = 'none');
+  document.getElementById(`view-${tabId}`).style.display = 'block';
+  
+  // Reload Data
+  loadShippingBillsListPage();
+}
+window.switchTransferTab = switchTransferTab;
+
+async function printExternalTransferAnnexure(outwardId) {
+  const currentUser = getAuthUser();
+  const userName = currentUser.name || currentUser.username || "Authorized Signatory";
+  const userRole = currentUser.role || "Officer";
+
+  try {
+    const entry = await apiCall(`/outward/${outwardId}`);
+    const container = document.getElementById('external-transfer-report-container');
+    if (!container) {
+      console.error("Print Container missing!");
+      return;
+    }
+    
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '.');
+
+    let html = `
+      <style>
+        .annexure-print { font-family: 'Arial', sans-serif; padding: 10px 20px; color: #000; width: 1050px; margin: 0 auto; background: #fff; }
+        .annexure-header { text-align: center; position: relative; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 5px; }
+        .annexure-header h1 { margin: 0; font-size: 16px; text-decoration: underline; text-transform: uppercase; letter-spacing: 2px; }
+        .annexure-header h2 { margin: 5px 0 0 0; font-size: 13px; font-weight: normal; }
+        .f-no { position: absolute; right: 0; top: 25px; font-weight: bold; font-size: 13px; }
+        
+        .annexure-top-grid { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 10px; font-size: 12px; }
+        .annexure-to { font-weight: bold; line-height: 1.3; }
+        .annexure-date { text-align: right; font-weight: bold; font-size: 15px; padding-right: 20px; }
+        
+        .annexure-body { font-size: 12px; margin-bottom: 10px; line-height: 1.4; }
+        .annexure-body p { margin: 2px 0; }
+        
+        .warehouse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 10px; }
+        .wh-box { padding: 2px; font-size: 12px; line-height: 1.3; }
+        .wh-label { font-weight: bold; text-decoration: underline; margin-bottom: 2px; display: block; }
+        
+        .annexure-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 11px; table-layout: fixed; }
+        .annexure-table th, .annexure-table td { border: 1px solid #000; padding: 4px 2px; text-align: center; vertical-align: middle; word-wrap: break-word; }
+        .annexure-table th { font-weight: bold; background: #f8f8f8; height: 35px; }
+        
+        .signature-section { margin-top: 30px; display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 20px; font-size: 11px; font-weight: bold; text-align: center; }
+        .sig-box { min-height: 60px; display: flex; flex-direction: column; justify-content: flex-end; }
+        .sig-label { border-top: 1px solid transparent; padding-top: 5px; }
+
+        @media print {
+          @page { size: landscape; margin: 0.2cm; }
+          body * { visibility: hidden; }
+          #external-transfer-report-container, #external-transfer-report-container * { visibility: visible; }
+          #external-transfer-report-container { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+      </style>
+      
+      <div class="annexure-print">
+        <div class="annexure-header">
+          <h1>ANNEXURE - III</h1>
+          <h2>Form of application for Transfer of goods from one warehouse to another in port</h2>
+          <div class="f-no">F NO-</div>
+        </div>
+
+        <div class="annexure-top-grid">
+          <div class="annexure-to">
+            To<br>
+            The Deputy Commissioner of Customs,<br>
+            Air Cargo complex, CIAL, Cochin-683575
+          </div>
+          <div class="annexure-date">${today}</div>
+        </div>
+
+        <div class="annexure-body">
+          <p>Dear sir,</p>
+          <p style="padding-left: 20px;">Please permit the transfer of the under mentioned goods for the unexpired period of warehousing under section 67 of the custom act,1962 as per details given below:</p>
+        </div>
+
+        <div class="warehouse-grid">
+          <div class="wh-box">
+            <span class="wh-label">From Ware House :</span>
+            M/s CASINO AIR CATERERS & FLIGHT SERVICES<br>
+            C/O. AIR INDIA LTD<br>
+            Opp. CIAL, Nedumbassery, Cochin 693575<br>
+            03/2016(CUS SP WH)<br>
+            Cochin - 683572
+          </div>
+          <div class="wh-box">
+            <span class="wh-label">To Ware House:</span>
+            ${entry.to_warehouse || '-'}
+          </div>
+        </div>
+
+        <table class="annexure-table">
+          <thead>
+            <tr>
+              <th style="width: 40px;">S.No.</th>
+              <th style="width: 80px;">Bond No.</th>
+              <th style="width: 80px;">Date</th>
+              <th style="width: 100px;">BE No & Form B No & A.R.E. No</th>
+              <th style="width: 80px;">Date</th>
+              <th style="width: 200px;">Description of Goods</th>
+              <th style="width: 70px;">Bonded Qty</th>
+              <th style="width: 70px;">Total Qty Trfr</th>
+              <th style="width: 85px;">Date of Bond Expiry</th>
+              <th style="width: 90px;">Ass. Value Rs.</th>
+              <th style="width: 90px;">Duty Rs.</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entry.items.map((item, idx) => `
+              <tr>
+                <td>${idx + 1}</td>
+                <td>${item.bond_no || '-'}</td>
+                <td>${formatDate(item.bond_date)}</td>
+                <td>${item.be_no || '-'}</td>
+                <td>${formatDate(item.be_date)}</td>
+                <td style="text-align: left; padding-left: 5px;">${item.item_description}</td>
+                <td>${item.original_qty}</td>
+                <td style="font-weight: bold;">${item.qty_dispatched}</td>
+                <td>${formatDate(item.bond_expiry)}</td>
+                <td>${(parseFloat(item.value) * item.qty_dispatched).toFixed(2)}</td>
+                <td>${Math.round(parseFloat(item.duty) * item.qty_dispatched)}</td>
+              </tr>
+            `).join('')}
+            <tr>
+              <td colspan="11" style="text-align: left; padding: 10px; font-style: italic;">Ref. Your Space certificate No.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="signature-section">
+          <div class="sig-box">
+            <div style="margin-bottom: 40px; text-transform: uppercase;">${userName}</div>
+            <div>OFFICER AIRLINE STORE</div>
+            <div>CAFS, COCHIN</div>
+          </div>
+          <div class="sig-box">
+            <div>Bond-Officer(Air-Bonds)</div>
+            <div>CIAL. COCHIN</div>
+          </div>
+          <div class="sig-box">
+            <div>Suppt. Of Customs(Air-Bonds)</div>
+            <div>CIAL, COCHIN</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+    container.style.display = 'block';
+    window.print();
+    // Re-hide after printing
+    setTimeout(() => { container.style.display = 'none'; }, 1000);
+
+  } catch (err) {
+    console.error("Print Annexure Error:", err);
+    showToast("Failed to generate print preview", "error");
+  }
+}
+window.printExternalTransferAnnexure = printExternalTransferAnnexure;
 
 function getStatusBadge(status) {
   const classes = {
@@ -2871,12 +3113,11 @@ function updateSBItemSource(idx, valueStr) {
     bond_no: item.bond_no,
     bond_expiry: formatDateForInput(getLastExpiry(item)), // Use calculated latest expiry
     available_qty: item.available_qty,
-    available_qty: item.available_qty,
-    qty: item.available_qty,
+    qty: 1, // Defaulting to 1 as requested
     unit_value: unitValue,
-    value_amount: unitValue * item.available_qty,
+    value_amount: unitValue * 1,
     unit_duty: unitDuty,
-    duty_amount: unitDuty * item.available_qty,
+    duty_amount: unitDuty * 1,
   };
 
   // If this was the last item (empty row), add a new empty row
@@ -4267,6 +4508,9 @@ function setupFormKeyboardNav(formId) {
   });
 }
 async function initOutwardEntry() {
+  const params = new URLSearchParams(window.location.search);
+  const natureParam = params.get('nature');
+  
   if (items.length === 0) items = await apiCall("/items");
   updateItemsDatalist();
 
@@ -4285,6 +4529,34 @@ async function initOutwardEntry() {
 
   const form = document.getElementById("outward-dispatch-form");
   if (form && typeof form.reset === "function") form.reset();
+
+  // Handle nature param
+  if (natureParam) {
+    const natureSelect = document.getElementById("out-removal-nature");
+    if (natureSelect) {
+      natureSelect.value = natureParam;
+      
+      // If it's a transfer, enable the stock selection immediately
+      if (natureParam === 'Transfer') {
+        const addBtn = document.getElementById("btn-add-outward-item-page");
+        if (addBtn) {
+          addBtn.disabled = false;
+          // Pre-fetch items to enable the modal
+          fetchAvailableForConsignmentPage('ALL');
+        }
+      } else {
+        // Nature is not Transfer, disable until airline is selected
+        const addBtn = document.getElementById("btn-add-outward-item-page");
+        if (addBtn) addBtn.disabled = true;
+      }
+    }
+  }
+
+  // Trigger toggle logic once to initialize visibility
+  if (window.toggleTransferFields) window.toggleTransferFields();
+
+  // Initialize datepickers
+  initDatepickers();
 
   document.getElementById("out-date").value = new Date()
     .toISOString()
@@ -4424,52 +4696,183 @@ async function fetchAvailableForConsignmentPage(consignmentId) {
   }
 
   try {
-    // Fetch ALL available stock (not filtered by consignment) 
-    // The selected airline is the DESTINATION, not the stock source
-    availableInwardItems = await apiCall(`/outward/available/items`);
+    // If 'ALL' is passed (for transfers), fetch all. Otherwise filter by consignment.
+    const url = consignmentId === 'ALL' ? `/outward/available/items` : `/outward/available/items?consignment_id=${consignmentId}`;
+    
+    availableInwardItems = await apiCall(url);
     document.getElementById("btn-add-outward-item-page").disabled = false;
-    outwardItemsTemp = [];
+    
+    // We don't reset outwardItemsTemp here to avoid clearing items if they change the airline
+    // but the user's feedback suggests they only want items for that airline anyway.
+    
     renderOutwardDispatchTable();
     if (availableInwardItems.length === 0) {
-      showToast("No stock available in warehouse", "info");
+      showToast(consignmentId === 'ALL' ? "No stock available in warehouse" : "No stock available for this airline", "info");
     }
   } catch (e) {
     console.error("Fetch available items error:", e);
   }
 }
 
-function renderOutwardDispatchTable() {
-  const tbody = document.getElementById("outward-dispatch-table-tbody");
-  if (outwardItemsTemp.length === 0) {
-    tbody.innerHTML =
-      '<tr><td colspan="7" class="empty-state">Select an Airline first, then add items.</td></tr>';
+function openOutwardStockModal() {
+  const nature = document.getElementById("out-removal-nature").value;
+  if (availableInwardItems.length === 0) {
+    showToast("No stock available for selection", "warning");
     return;
   }
 
-  tbody.innerHTML = outwardItemsTemp
+  // Filter available items (exclude those already added)
+  const addedIds = new Set(outwardItemsTemp.map(i => i.inward_item_id));
+  const available = availableInwardItems.filter(i => !addedIds.has(i.inward_item_id));
+
+  if (available.length === 0) {
+    showToast("All available stock for this airline is already added", "info");
+    return;
+  }
+
+  const body = `
+    <div style="margin-bottom: 1rem;">
+      <input type="text" class="form-control" id="stock-lookup-search" placeholder="Search by Bond No or Description..." onkeyup="filterStockModalItems(this.value)">
+    </div>
+    <div style="max-height: 400px; overflow-y: auto;">
+      <table class="table" id="stock-modal-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;"><input type="checkbox" id="select-all-stock" onclick="toggleAllStockChecks(this.checked)"></th>
+            <th>Bond No</th>
+            <th>Description</th>
+            <th>Expiry</th>
+            <th>Available</th>
+          </tr>
+        </thead>
+        <tbody id="stock-modal-tbody">
+          ${available.map(ai => {
+            const itemData = JSON.stringify({
+              inward_item_id: ai.inward_item_id || ai.id,
+              inward_id: ai.inward_id,
+              item_id: ai.item_id,
+              description: ai.description,
+              available_qty: parseFloat(ai.available_qty) || 0,
+              bond_no: ai.bond_no,
+              hsn_code: ai.hsn_code || '',
+              value: parseFloat(ai.value) || 0,
+              duty: parseFloat(ai.duty) || 0,
+              original_qty: parseFloat(ai.original_qty || ai.qty) || 1
+            }).replace(/"/g, '&quot;');
+            
+            return `
+              <tr style="cursor: pointer;" onclick="toggleStockRowCheck(this)">
+                <td><input type="checkbox" class="stock-check" value="${ai.inward_item_id || ai.id}" data-item="${itemData}" onclick="event.stopPropagation()"></td>
+                <td><strong>${ai.bond_no}</strong></td>
+                <td>${ai.description}</td>
+                <td>${formatDate(ai.bond_expiry)}</td>
+                <td class="stock-medium">${ai.available_qty}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  openModal("Select Items from Stock", body, `
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="addSelectedStockToOutward()">Add Selected Items</button>
+  `);
+}
+
+window.filterStockModalItems = (query) => {
+  const rows = document.querySelectorAll("#stock-modal-tbody tr");
+  const q = query.toLowerCase();
+  rows.forEach(row => {
+    const text = row.innerText.toLowerCase();
+    row.style.display = text.includes(q) ? "" : "none";
+  });
+};
+
+window.toggleAllStockChecks = (checked) => {
+  document.querySelectorAll(".stock-check").forEach(cb => {
+    if (cb.closest('tr').style.display !== 'none') cb.checked = checked;
+  });
+};
+
+window.toggleStockRowCheck = (tr) => {
+  const cb = tr.querySelector(".stock-check");
+  if (cb) cb.checked = !cb.checked;
+};
+
+function addSelectedStockToOutward() {
+  const checks = document.querySelectorAll(".stock-check:checked");
+  console.log("Adding items. Selected checkboxes:", checks.length);
+  
+  if (checks.length === 0) {
+    showToast("No items selected", "warning");
+    return;
+  }
+
+  // Use window scope explicitly to prevent shadowing issues
+  if (!window.outwardItemsTemp) window.outwardItemsTemp = [];
+
+  checks.forEach(cb => {
+    const itemDataRaw = cb.getAttribute("data-item");
+    if (!itemDataRaw) return;
+
+    try {
+      const ai = JSON.parse(itemDataRaw);
+      console.log("Adding captured item:", ai.bond_no, ai.description);
+      
+      const unitValue = ai.value / ai.original_qty;
+      const unitDuty = ai.duty / ai.original_qty;
+
+      window.outwardItemsTemp.push({
+        inward_item_id: ai.inward_item_id,
+        inward_id: ai.inward_id,
+        item_id: ai.item_id,
+        description: ai.description,
+        available_qty: ai.available_qty,
+        bond_no: ai.bond_no,
+        hsn_code: ai.hsn_code || '',
+        value: unitValue,
+        duty: unitDuty,
+        qty_dispatched: 1, // Defaulting to 1 as requested
+      });
+    } catch (e) {
+      console.error("Error parsing item data:", e);
+    }
+  });
+
+  console.log("Outward Selection Finished. Total Items in window.outwardItemsTemp:", window.outwardItemsTemp.length);
+  closeModal();
+  renderOutwardDispatchTable();
+}
+window.addSelectedStockToOutward = addSelectedStockToOutward;
+
+function renderOutwardDispatchTable() {
+  const tbody = document.getElementById("outward-dispatch-table-tbody");
+  if (!tbody) return;
+
+  const itemsToRender = window.outwardItemsTemp || [];
+  console.log("Drawing Outward Dispatch Table. Items count:", itemsToRender.length);
+  
+  if (itemsToRender.length === 0) {
+    tbody.innerHTML =
+      '<tr><td colspan="7" class="empty-state">No items added. Click "Select from Stock" to begin.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = itemsToRender
     .map(
       (item, idx) => `
         <tr>
-            <td>
-                <select class="form-control searchable" onchange="updateOutwardItemSourcePage(${idx}, this.value)">
-                    <option value="">Select Stock Source</option>
-                    ${availableInwardItems
-                      .map(
-                        (ai) => `
-                        <option value="${ai.inward_item_id}" data-available="${ai.available_qty}" data-inward="${ai.inward_id}" data-item="${ai.item_id}" data-desc="${ai.description}" data-value="${ai.value}" data-duty="${ai.duty}" data-hsn="${ai.hsn_code || ''}" data-orig-qty="${ai.original_qty || 1}"
-                                ${item.inward_item_id == ai.inward_item_id ? "selected" : ""}>
-                            ${ai.bond_no} - ${ai.description} (Avail: ${ai.available_qty})
-                        </option>
-                    `,
-                      )
-                      .join("")}
-                </select>
+            <td style="font-size: 0.9rem;">
+                <strong>${item.bond_no || '-'}</strong><br>
+                <span class="text-muted">${item.description}</span>
             </td>
             <td>${item.hsn_code || '-'}</td>
-            <td>${item.available_qty || 0}</td>
-            <td><input type="number" class="form-control" value="${item.qty_dispatched || 1}" min="1" max="${item.available_qty}" onchange="updateOutwardItemPage(${idx}, 'qty_dispatched', this.value)"></td>
-            <td>${formatCurrency(item.value * (item.qty_dispatched || 1))}</td>
-            <td>${formatCurrency(item.duty * (item.qty_dispatched || 1))}</td>
+            <td class="stock-medium">${item.available_qty || 0}</td>
+            <td><input type="number" class="form-control" value="${item.qty_dispatched || 0}" min="0" max="${item.available_qty}" onchange="updateOutwardItemPage(${idx}, 'qty_dispatched', this.value)"></td>
+            <td>${formatCurrency(item.value * (item.qty_dispatched || 0))}</td>
+            <td>${formatCurrency(item.duty * (item.qty_dispatched || 0))}</td>
             <td><button class="action-btn danger" onclick="removeOutwardItemPage(${idx})"><i class="fas fa-trash"></i></button></td>
         </tr>
     `,
@@ -4477,50 +4880,18 @@ function renderOutwardDispatchTable() {
     .join("");
 }
 
-function addOutwardItemPage() {
-  outwardItemsTemp.push({
-    inward_item_id: null,
-    inward_id: null,
-    item_id: null,
-    description: "",
-    qty_dispatched: 1,
-    available_qty: 0,
-  });
-  renderOutwardDispatchTable();
-}
-
-function updateOutwardItemSourcePage(idx, value) {
-  const select = document.querySelectorAll("#outward-items-billing-table select")[
-    idx
-  ];
-  const option = select.options[select.selectedIndex];
-  if (!value) return;
-
-  const origQty = parseFloat(option.dataset.origQty) || 1;
-  const totVal = parseFloat(option.dataset.value) || 0;
-  const totDuty = parseFloat(option.dataset.duty) || 0;
-
-  outwardItemsTemp[idx] = {
-    inward_item_id: parseInt(value),
-    inward_id: parseInt(option.dataset.inward),
-    item_id: parseInt(option.dataset.item),
-    description: option.dataset.desc,
-    available_qty: parseInt(option.dataset.available),
-    value: totVal / origQty, // Convert TOTAL to UNIT value
-    duty: totDuty / origQty, // Convert TOTAL to UNIT duty
-    hsn_code: option.dataset.hsn || '',
-    qty_dispatched: 1,
-  };
-  renderOutwardDispatchTable();
-}
+window.openOutwardStockModal = openOutwardStockModal;
+window.addSelectedStockToOutward = addSelectedStockToOutward;
 
 function updateOutwardItemPage(idx, field, value) {
-  outwardItemsTemp[idx][field] = parseInt(value) || 0;
+  if (!window.outwardItemsTemp[idx]) return;
+  window.outwardItemsTemp[idx][field] = parseFloat(value) || 0;
   renderOutwardDispatchTable();
 }
 
 function removeOutwardItemPage(idx) {
-  outwardItemsTemp.splice(idx, 1);
+  if (!window.outwardItemsTemp) return;
+  window.outwardItemsTemp.splice(idx, 1);
   renderOutwardDispatchTable();
 }
 
@@ -4621,15 +4992,28 @@ function editInward(id) {
 }
 
 async function saveOutwardPage() {
+  const natureSelect = document.getElementById("out-removal-nature");
+  const nature = natureSelect ? natureSelect.value : 'Re-export';
+  
+  const airlineSelect = document.getElementById("out-consignment");
+  const consignment_id = (airlineSelect && airlineSelect.tomselect) 
+    ? airlineSelect.tomselect.getValue() 
+    : (airlineSelect ? airlineSelect.value : null);
+
   const data = {
     dispatch_date: document.getElementById("out-date").value,
     flight_no: document.getElementById("out-flight").value,
-    consignment_id: document.getElementById("out-consignment").value || null,
-    shipping_bill_no: document.getElementById("out-sb-no").value,
-    shipping_bill_date: document.getElementById("out-sb-date").value,
-    items: outwardItemsTemp,
+    nature_of_removal: nature,
+    to_warehouse: document.getElementById("out-to-warehouse").value || null,
+    consignment_id: consignment_id || null,
+    shipping_bill_no: document.getElementById("out-sb-no").value || null,
+    shipping_bill_date: document.getElementById("out-sb-date").value || null,
+    registration_no_of_means_of_transport: document.getElementById("out-transport-reg").value || null,
+    items: window.outwardItemsTemp || [],
     branch_id: getAuthUser().branch_id || null
   };
+
+  console.log("Attempting to save Outward Dispatch:", data);
 
   if (!data.dispatch_date || !data.consignment_id || data.items.length === 0) {
     showToast("Dispatch date, airline and items are required", "error");
@@ -4641,7 +5025,8 @@ async function saveOutwardPage() {
     showToast("Outward Dispatch Created");
     window.location.href = 'outward.html';
   } catch (e) {
-    console.error(e);
+    console.error("Save Outward Error:", e);
+    showToast(e.message || "Failed to create dispatch", "error");
   }
 }
 
@@ -5116,10 +5501,10 @@ window.addInwardItemPage = addInwardItemPage;
 window.removeInwardItemPage = removeInwardItemPage;
 window.updateInwardItemPage = updateInwardItemPage;
 window.saveInwardPage = saveInwardPage;
-window.addOutwardItemPage = addOutwardItemPage;
+window.openOutwardStockModal = openOutwardStockModal;
+window.addSelectedStockToOutward = addSelectedStockToOutward;
 window.removeOutwardItemPage = removeOutwardItemPage;
 window.updateOutwardItemPage = updateOutwardItemPage;
-window.updateOutwardItemSourcePage = updateOutwardItemSourcePage;
 window.saveOutwardPage = saveOutwardPage;
 window.fetchAvailableForConsignmentPage = fetchAvailableForConsignmentPage;
 window.updateTransportMode = updateTransportMode;
@@ -5624,6 +6009,7 @@ function initNavigation() {
                 <a href="form-b.html" class="nav-item ${window.location.pathname.endsWith('form-b.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
                 <a href="detailed-stock.html" class="nav-item ${window.location.pathname.endsWith('detailed-stock.html') ? 'active' : ''}"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
                 <a href="shipping-bill.html" class="nav-item ${window.location.pathname.endsWith('shipping-bill.html') ? 'active' : ''}"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
+                <a href="shipping-bill.html?tab=et" class="nav-item ${window.location.pathname.includes('tab=et') ? 'active' : ''}"><i class="fas fa-exchange-alt"></i> <span>External Transfer</span></a>
 
                 <div class="nav-label">Master Data</div>
                 <a href="items.html" class="nav-item ${window.location.pathname.endsWith('items.html') ? 'active' : ''}"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
@@ -5654,6 +6040,17 @@ function initNavigation() {
           </div>
           <div class="top-actions">
             ${user.role !== 'SUPER_ADMIN' ? `
+              <div class="page-header">
+                <h1 class="page-title">External Transfer Annexure</h1>
+                <div class="page-actions">
+                  <button class="btn btn-secondary" onclick="window.location.href='outward-entry.html?nature=Transfer'">
+                    <i class="fas fa-plus"></i> New External Transfer
+                  </button>
+                  <button class="btn btn-primary" onclick="window.location.href='shipping-bill-entry.html'">
+                    <i class="fas fa-plus"></i> New Shipping Bill
+                  </button>
+                </div>
+              </div>
               <button class="btn btn-primary" onclick="window.location.href='inward-entry.html'">
                 <i class="fas fa-plus"></i> New Inward
               </button>
