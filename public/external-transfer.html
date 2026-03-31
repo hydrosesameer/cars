@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shipping Bills - CAFS Inventory</title>
+    <title>External Transfers - CAFS Inventory</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css" rel="stylesheet">
@@ -19,28 +19,27 @@
         <header class="top-bar" id="top-bar-container"></header>
         <div class="content-body">
             <div class="page-header">
-              <h1 class="page-title">Shipping Bills</h1>
+              <h1 class="page-title">External Transfers</h1>
               <div class="page-actions">
-                <button class="btn btn-primary" onclick="window.location.href='shipping-bill-entry.html'">
-                  <i class="fas fa-plus"></i> New Shipping Bill
+                <button class="btn btn-primary" onclick="window.location.href='outward-entry.html?nature=Transfer'">
+                  <i class="fas fa-plus"></i> New External Transfer
                 </button>
               </div>
             </div>
 
-            <!-- Shipping Bills View -->
-            <div id="view-sb" class="transfer-view">
+            <!-- External Transfer View -->
+            <div id="view-et" class="transfer-view">
               <div class="card">
                 <div class="card-body" style="padding: 0">
-                  <table class="table" id="shipping-bills-table">
+                  <table class="table" id="external-transfers-table">
                     <thead>
                       <tr>
-                        <th>SB No</th>
-                        <th>Date</th>
+                        <th>Transfer Date</th>
+                        <th>Bond No</th>
                         <th>Flight No</th>
-                        <th>Airline</th>
-                        <th>Items</th>
+                        <th>Destination</th>
+                        <th>Total Items</th>
                         <th>Total Qty</th>
-                        <th>Total Value</th>
                         <th>Status</th>
                         <th>Actions</th>
                       </tr>
@@ -50,6 +49,9 @@
                 </div>
               </div>
             </div>
+
+            <!-- Hidden Report Container for Printing Annexure III -->
+            <div id="external-transfer-report-container" class="report-print-container" style="display: none;"></div>
         </div>
       </main>
     </div>
@@ -60,7 +62,7 @@
     <script>document.addEventListener('DOMContentLoaded', async () => {
         if (!authCheck()) return; 
         initNavigation();
-        await loadShippingBillsListPage(); 
+        await loadExternalTransfersListPage(); 
     });</script>
   </body>
 </html>

@@ -135,8 +135,10 @@ function formatDateForDB(dateStr) {
 }
 
 function formatDate(dateStr) {
-  if (!dateStr) return "-";
-  return new Date(dateStr).toLocaleDateString("en-GB"); // DD/MM/YYYY
+  if (!dateStr || dateStr === "-" || dateStr === "N/A") return "-";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr === "N/A" ? "N/A" : "-";
+  return d.toLocaleDateString("en-GB"); // DD/MM/YYYY
 }
 
 function formatDateForInput(dateStr) {
@@ -372,7 +374,7 @@ function loadFlatpickrAndInit() {
     initDatePickers();
   } else {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/flatpickr?v=70';
+    script.src = 'https://cdn.jsdelivr.net/npm/flatpickr?v=72';
     document.head.appendChild(script);
     
     if (!document.querySelector('link[href*="flatpickr"]')) {
@@ -2393,73 +2395,53 @@ async function loadShippingBillsListPage() {
   const user = getAuthUser();
   const branchId = user.role === 'SUPER_ADMIN' ? '' : (user.branch_id || '');
   
-  // Handle tab from URL
-  const params = new URLSearchParams(window.location.search);
-  const tabParam = params.get('tab');
-  if (tabParam === 'et' && document.getElementById('tab-et') && !document.getElementById('tab-et').classList.contains('active')) {
-    // We need to switch tab without triggering a reload loop
-    // switchTransferTab calls loadShippingBillsListPage again, so we just set the classes 
-    // and continue the logic for 'et'
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('tab-et').classList.add('active');
-    document.querySelectorAll('.transfer-view').forEach(view => view.style.display = 'none');
-    document.getElementById('view-et').style.display = 'block';
-  }
+  try {
+    const bills = await apiCall(`/shipping-bills${branchId ? `?branch_id=${branchId}` : ''}`);
+    const canApprove = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'].includes(user.role);
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role);
 
-  // Find which tab is active
-  const activeTab = document.querySelector('.tab-btn.active')?.id || 'tab-sb';
-  
-  if (activeTab === 'tab-sb') {
-    try {
-      const bills = await apiCall(`/shipping-bills${branchId ? `?branch_id=${branchId}` : ''}`);
-      const canApprove = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'APPROVER'].includes(user.role);
-      const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role);
+    paginateTable('shipping-bills-table', bills, (e) => {
+      const isUnapproved = e.status === 'DRAFT' && e.unapproved_remarks;
+      const statusText = isUnapproved ? 'UNAPPROVED' : e.status;
+      const statusClass = isUnapproved ? 'badge-danger' : getStatusBadge(e.status);
 
-      paginateTable('shipping-bills-table', bills, (e) => {
-        const isUnapproved = e.status === 'DRAFT' && e.unapproved_remarks;
-        const statusText = isUnapproved ? 'UNAPPROVED' : e.status;
-        const statusClass = isUnapproved ? 'badge-danger' : getStatusBadge(e.status);
-
-        return `
-        <tr>
-          <td><strong>${e.sb_no}</strong></td>
-          <td>${formatDate(e.sb_date)}</td>
-          <td>${e.flight_no || '-'}</td>
-          <td>${e.consignment_name || '-'}</td>
-          <td>${e.item_count || 0}</td>
-          <td class="stock-medium">${(e.total_qty || 0).toLocaleString()}</td>
-          <td>₹${(e.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-          <td>
-            <span class="badge ${statusClass}">${statusText}</span>
-          </td>
-          <td>
-            <div class="action-btns">
-              ${(e.status === 'DRAFT' && canApprove) ? `<button class="action-btn success" onclick="approveShippingBill(${e.id})" title="Approve"><i class="fas fa-check"></i></button>` : ''}
-              ${(e.status === 'DRAFT' && isAdmin) ? `<button class="action-btn warning" onclick="rejectShippingBill(${e.id})" title="Not Approved"><i class="fas fa-times-circle"></i></button>` : ''}
-              ${(e.status === 'APPROVED' && isAdmin) ? `<button class="action-btn warning" onclick="unapproveShippingBill(${e.id})" title="Unapprove"><i class="fas fa-undo"></i></button>` : ''}
-              ${(e.status === 'DRAFT') ? `<button class="action-btn primary" onclick="window.location.href='shipping-bill-entry.html?id=${e.id}'" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
-              <button class="action-btn info" onclick="viewShippingBill(${e.id})" title="View Details"><i class="fas fa-eye"></i></button>
-              <button class="action-btn secondary" onclick="printShippingBill(${e.id})" title="Print"><i class="fas fa-print"></i></button>
-              ${(() => {
-                  if (e.status !== 'DRAFT' || !isAdmin) return '';
-                  const createdDate = new Date(e.created_at);
-                  const now = new Date();
-                  const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
-                  if (diffDays <= 3) {
-                      return `<button class="action-btn danger" onclick="deleteShippingBill(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
-                  }
-                  return '';
-              })()}
-            </div>
-          </td>
-        </tr>
-      `;
-      }, 9);
-    } catch (error) {
-      console.error("Error loading shipping bills:", error);
-    }
-  } else {
-    await loadExternalTransfersListPage();
+      return `
+      <tr>
+        <td><strong>${e.sb_no}</strong></td>
+        <td>${formatDate(e.sb_date)}</td>
+        <td>${e.flight_no || '-'}</td>
+        <td>${e.consignment_name || '-'}</td>
+        <td>${e.item_count || 0}</td>
+        <td class="stock-medium">${(e.total_qty || 0).toLocaleString()}</td>
+        <td>₹${(e.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        <td>
+          <span class="badge ${statusClass}">${statusText}</span>
+        </td>
+        <td>
+          <div class="action-btns">
+            ${(e.status === 'DRAFT' && canApprove) ? `<button class="action-btn success" onclick="approveShippingBill(${e.id})" title="Approve"><i class="fas fa-check"></i></button>` : ''}
+            ${(e.status === 'DRAFT' && isAdmin) ? `<button class="action-btn warning" onclick="rejectShippingBill(${e.id})" title="Not Approved"><i class="fas fa-times-circle"></i></button>` : ''}
+            ${(e.status === 'APPROVED' && isAdmin) ? `<button class="action-btn warning" onclick="unapproveShippingBill(${e.id})" title="Unapprove"><i class="fas fa-undo"></i></button>` : ''}
+            ${(e.status === 'DRAFT') ? `<button class="action-btn primary" onclick="window.location.href='shipping-bill-entry.html?id=${e.id}'" title="Edit"><i class="fas fa-edit"></i></button>` : ''}
+            <button class="action-btn info" onclick="viewShippingBill(${e.id})" title="View Details"><i class="fas fa-eye"></i></button>
+            <button class="action-btn secondary" onclick="printShippingBill(${e.id})" title="Print"><i class="fas fa-print"></i></button>
+            ${(() => {
+                if (e.status !== 'DRAFT' || !isAdmin) return '';
+                const createdDate = new Date(e.created_at);
+                const now = new Date();
+                const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
+                if (diffDays <= 3) {
+                    return `<button class="action-btn danger" onclick="deleteShippingBill(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>`;
+                }
+                return '';
+            })()}
+          </div>
+        </td>
+      </tr>
+    `;
+    }, 9);
+  } catch (error) {
+    console.error("Error loading shipping bills:", error);
   }
 }
 
@@ -2480,6 +2462,7 @@ async function loadExternalTransfersListPage() {
         <td>
           <div class="action-btns">
             <button class="action-btn info" onclick="viewOutward(${e.id})" title="View Items"><i class="fas fa-eye"></i></button>
+            <button class="action-btn" onclick="window.location.href='outward-entry.html?id=${e.id}&nature=Transfer'" title="Edit"><i class="fas fa-edit"></i></button>
             <button class="action-btn secondary" onclick="printExternalTransferAnnexure(${e.id})" title="Print Transfer Form"><i class="fas fa-print"></i></button>
           </div>
         </td>
@@ -2489,30 +2472,6 @@ async function loadExternalTransfersListPage() {
     console.error("Error loading external transfers:", error);
   }
 }
-
-function switchTransferTab(tabId) {
-  // Update Buttons
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.remove('active');
-    btn.style.borderBottomColor = 'transparent';
-    btn.style.color = 'var(--text-muted)';
-    btn.style.fontWeight = '500';
-  });
-  
-  const activeBtn = document.getElementById(`tab-${tabId}`);
-  activeBtn.classList.add('active');
-  activeBtn.style.borderBottomColor = 'var(--accent-blue)';
-  activeBtn.style.color = 'var(--accent-blue)';
-  activeBtn.style.fontWeight = '600';
-  
-  // Show Views
-  document.querySelectorAll('.transfer-view').forEach(view => view.style.display = 'none');
-  document.getElementById(`view-${tabId}`).style.display = 'block';
-  
-  // Reload Data
-  loadShippingBillsListPage();
-}
-window.switchTransferTab = switchTransferTab;
 
 async function printExternalTransferAnnexure(outwardId) {
   const currentUser = getAuthUser();
@@ -3642,7 +3601,7 @@ async function printShippingBill(id) {
         <div class="decl-left">
           <p>The goods covered by this shipping bill are shipped direct from the
           private bond of M/S. CASINO AIR CATERERS & FLIGHT SERVICES
-          situated at NAVATHOSE per VT ............ under my escort and
+          situated at ${bill.shipping_place || 'NAVATHOSE'} per VT ............ under my escort and
           Supervision.</p>
           <div style="margin-top: 49px;">
         
@@ -4392,13 +4351,9 @@ function updateAirlineName() {
 }
 
 function toggleInwardBondMode(isItemWise) {
-  // For Air India (isItemWise=true): show item-level Bond No & Bond Date columns
-  // Header sections (Bonding & Expiry, Duty Rate %, Bond No/Date) remain ALWAYS visible
+  // Always show item-level columns now as per streamlining request
   const itemCols = document.querySelectorAll(".item-bond-col");
-  
-  itemCols.forEach(col => {
-    col.style.display = isItemWise ? "table-cell" : "none";
-  });
+  itemCols.forEach(col => col.style.display = "table-cell");
 }
 
 // Load flight numbers for a given airline (consignment_id)
@@ -4513,9 +4468,14 @@ function setupFormKeyboardNav(formId) {
     }
   });
 }
+let currentOutwardId = null;
+
 async function initOutwardEntry() {
   const params = new URLSearchParams(window.location.search);
+  const editId = params.get('id');
   const natureParam = params.get('nature');
+
+  currentOutwardId = editId;
   
   if (items.length === 0) items = await apiCall("/items");
   updateItemsDatalist();
@@ -4536,46 +4496,59 @@ async function initOutwardEntry() {
   const form = document.getElementById("outward-dispatch-form");
   if (form && typeof form.reset === "function") form.reset();
 
-  // Handle nature param
-  if (natureParam) {
-    const natureSelect = document.getElementById("out-removal-nature");
-    if (natureSelect) {
-      natureSelect.value = natureParam;
-      
-      // If it's a transfer, enable the stock selection immediately
-      if (natureParam === 'Transfer') {
-        const addBtn = document.getElementById("btn-add-outward-item-page");
-        if (addBtn) {
-          addBtn.disabled = false;
-          // Pre-fetch items to enable the modal
-          fetchAvailableForConsignmentPage('ALL');
-        }
-      } else {
-        // Nature is not Transfer, disable until airline is selected
-        const addBtn = document.getElementById("btn-add-outward-item-page");
-        if (addBtn) addBtn.disabled = true;
-      }
-    }
-  }
-
-  // Trigger toggle logic once to initialize visibility
-  if (window.toggleTransferFields) window.toggleTransferFields();
-
-  // Initialize datepickers
-  initDatepickers();
-
-  document.getElementById("out-date").value = new Date()
-    .toISOString()
-    .split("T")[0];
-  availableInwardItems = [];
   outwardItemsTemp = [];
 
-  const addBtn = document.getElementById("btn-add-outward-item-page");
-  if (addBtn) addBtn.disabled = true;
+  if (editId) {
+    document.querySelector('.page-title').textContent = natureParam === 'Transfer' ? "Edit External Transfer" : "Edit Outward Dispatch";
+    const saveBtn = document.querySelector('button[onclick="saveOutwardPage()"]');
+    if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save"></i> Update Dispatch';
 
-  renderOutwardDispatchTable();
-  
-  // Setup full-form keyboard navigation (Enter = Tab to next)
+    try {
+      const entry = await apiCall(`/outward/${editId}`);
+      console.log("Loading outward entry for edit:", entry);
+
+      document.getElementById("out-date").value = entry.dispatch_date ? entry.dispatch_date.split('T')[0] : "";
+      document.getElementById("out-removal-nature").value = entry.nature_of_removal || "Re-export";
+      document.getElementById("out-consignment").value = entry.consignment_id || "";
+      document.getElementById("out-flight").value = entry.flight_no || "";
+      document.getElementById("out-to-warehouse").value = entry.to_warehouse || "";
+      document.getElementById("out-sb-no").value = entry.shipping_bill_no || "";
+      if (document.getElementById("out-sb-date")) document.getElementById("out-sb-date").value = entry.shipping_bill_date ? entry.shipping_bill_date.split('T')[0] : "";
+      document.getElementById("out-transport-reg").value = entry.registration_no_of_means_of_transport || "";
+      document.getElementById("out-authorised-officer").value = entry.authorised_officer || "";
+
+      window.outwardItemsTemp = entry.items || [];
+      renderOutwardDispatchTable();
+      
+      const addBtn = document.getElementById("btn-add-outward-item-page");
+      if (addBtn) addBtn.disabled = false;
+
+    } catch (e) {
+      console.error(e);
+      showToast("Error loading outward dispatch", "error");
+    }
+  } else {
+    // Handle nature param for new entry
+    if (natureParam) {
+      const natureSelect = document.getElementById("out-removal-nature");
+      if (natureSelect) {
+        natureSelect.value = natureParam;
+        if (natureParam === 'Transfer') {
+          const addBtn = document.getElementById("btn-add-outward-item-page");
+          if (addBtn) {
+            addBtn.disabled = false;
+            fetchAvailableForConsignmentPage('ALL');
+          }
+        }
+      }
+    }
+    document.getElementById("out-date").value = new Date().toISOString().split("T")[0];
+    renderOutwardDispatchTable();
+  }
+
+  // Trigger toggle logic
+  if (window.toggleTransferFields) window.toggleTransferFields();
+  initDatepickers();
   setupFormKeyboardNav('outward-dispatch-form');
 }
 
@@ -4946,12 +4919,14 @@ async function saveInwardPage() {
     branch_id: getAuthUser().branch_id || null
   };
 
-  const isItemWise = data.consignment_id && document.getElementById("inw-airline-name").value.toUpperCase().includes("AIR INDIA");
-
-  if (isItemWise && data.items.length > 0) {
-    // For item-wise, use first item's bond info for the header mandatory fields
-    data.bond_no = data.items[0].bond_no;
-    data.bond_date = data.items[0].bond_date;
+  if (data.items.length > 0) {
+    // Always use first item's details if header is hidden/empty (streamlined mode)
+    if (!data.bond_no) data.bond_no = data.items[0].bond_no;
+    if (!data.bond_date || data.bond_date === "") data.bond_date = data.items[0].bond_date;
+    if (!data.be_date || data.be_date === "") {
+        // Use bond date or today as fallback for BE Date if hidden
+        data.be_date = data.bond_date || new Date().toISOString().split('T')[0];
+    }
   }
 
   // Validation for mandatory fields
@@ -5028,12 +5003,15 @@ async function saveOutwardPage() {
   }
 
   try {
-    await apiCall("/outward", "POST", data);
-    showToast("Outward Dispatch Created");
+    const url = currentOutwardId ? `/outward/${currentOutwardId}` : "/outward";
+    const method = currentOutwardId ? "PUT" : "POST";
+    
+    await apiCall(url, method, data);
+    showToast(`Outward Dispatch ${currentOutwardId ? 'Updated' : 'Created'}`);
     window.location.href = 'outward.html';
   } catch (e) {
     console.error("Save Outward Error:", e);
-    showToast(e.message || "Failed to create dispatch", "error");
+    showToast(e.message || "Failed to save dispatch", "error");
   }
 }
 
@@ -5669,6 +5647,7 @@ async function loadBranchesPage() {
                 <td>${b.code || "-"}</td>
                 <td>${b.airport_code || "-"}</td>
                 <td>${b.address || "-"}</td>
+                <td>${b.shipping_place || "-"}</td>
                 <td><span class="status-indicator ${b.status === 'ACTIVE' ? 'status-active' : 'status-inactive'}"></span> ${b.status}</td>
                 <td>
                     <div class="action-btns">
@@ -5676,7 +5655,7 @@ async function loadBranchesPage() {
                     </div>
                 </td>
             </tr>
-        `, 6);
+        `, 7);
     } catch (error) { console.error(error); }
 }
 
@@ -5696,9 +5675,20 @@ function openBranchModal(branch = null) {
                 <label class="form-label">Airport Code</label>
                 <input type="text" class="form-control" id="branch-airport-code" value="${branch?.airport_code || ""}" placeholder="e.g. COK">
             </div>
+            <div class="form-group">
+                <label class="form-label">Shipping Place</label>
+                <input type="text" class="form-control" id="branch-shipping-place" value="${branch?.shipping_place || ""}" placeholder="e.g. SEZ">
+            </div>
             <div class="form-group" style="grid-column: span 2">
                 <label class="form-label">Address</label>
                 <textarea class="form-control" id="branch-address" rows="2">${branch?.address || ""}</textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Status</label>
+                <select class="form-control" id="branch-status">
+                    <option value="ACTIVE" ${branch?.status === 'ACTIVE' ? 'selected' : ''}>Active</option>
+                    <option value="INACTIVE" ${branch?.status === 'INACTIVE' ? 'selected' : ''}>Inactive</option>
+                </select>
             </div>
         </div>
     `;
@@ -5717,7 +5707,9 @@ async function saveBranch(id) {
         name: document.getElementById('branch-name').value,
         code: document.getElementById('branch-code').value,
         airport_code: document.getElementById('branch-airport-code').value,
-        address: document.getElementById('branch-address').value
+        shipping_place: document.getElementById('branch-shipping-place').value,
+        address: document.getElementById('branch-address').value,
+        status: document.getElementById('branch-status').value
     };
     try {
         if (id) await apiCall(`/branches/${id}`, "PUT", data);
@@ -6016,7 +6008,7 @@ function initNavigation() {
                 <a href="form-b.html" class="nav-item ${window.location.pathname.endsWith('form-b.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
                 <a href="detailed-stock.html" class="nav-item ${window.location.pathname.endsWith('detailed-stock.html') ? 'active' : ''}"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
                 <a href="shipping-bill.html" class="nav-item ${window.location.pathname.endsWith('shipping-bill.html') ? 'active' : ''}"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
-                <a href="shipping-bill.html?tab=et" class="nav-item ${window.location.pathname.includes('tab=et') ? 'active' : ''}"><i class="fas fa-exchange-alt"></i> <span>External Transfer</span></a>
+                <a href="external-transfer.html" class="nav-item ${window.location.pathname.endsWith('external-transfer.html') ? 'active' : ''}"><i class="fas fa-exchange-alt"></i> <span>External Transfer</span></a>
 
                 <div class="nav-label">Master Data</div>
                 <a href="items.html" class="nav-item ${window.location.pathname.endsWith('items.html') ? 'active' : ''}"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>

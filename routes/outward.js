@@ -92,7 +92,8 @@ router.get('/:id', async (req, res) => {
             SELECT oi.*, 
                    COALESCE(ii.bond_no, ie.bond_no) as bond_no, 
                    COALESCE(ii.bond_date, ie.bond_date) as bond_date,
-                   ie.be_no, ie.be_date,
+                   COALESCE(ie.be_no, 'N/A') as report_be_no, 
+                   COALESCE(ie.be_date, 'N/A') as report_be_date,
                    COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry) AS bond_expiry, 
                    ii.description as item_description, ii.qty as original_qty
             FROM outward_items oi
@@ -179,6 +180,66 @@ router.post('/', async (req, res) => {
     } catch (error) {
         await connection.rollback();
         res.status(error.message.includes('mandatory') || error.message.includes('Insufficient') || error.message.includes('Item not found') ? 400 : 500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+// Update outward entry
+router.put('/:id', async (req, res) => {
+    const db = req.app.locals.db;
+    const { 
+        dispatch_date, flight_no, consignment_id, shipping_bill_no, shipping_bill_date,
+        registration_no_of_means_of_transport, nature_of_removal, purpose, otl_no,
+        remarks, items, to_warehouse, authorised_officer
+    } = req.body;
+
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new Error('At least one item is required for dispatch');
+        }
+
+        // Calculate totals
+        const totalQty = items.reduce((sum, i) => sum + (parseInt(i.qty_dispatched) || 0), 0);
+        const totalValue = items.reduce((sum, i) => sum + ((parseFloat(i.value) || 0) * (parseInt(i.qty_dispatched) || 0)), 0);
+        const totalDuty = items.reduce((sum, i) => sum + ((parseFloat(i.duty) || 0) * (parseInt(i.qty_dispatched) || 0)), 0);
+
+        await connection.query(`
+            UPDATE outward_entries SET
+                dispatch_date = ?, flight_no = ?, consignment_id = ?, 
+                shipping_bill_no = ?, shipping_bill_date = ?,
+                registration_no_of_means_of_transport = ?, nature_of_removal = ?, 
+                purpose = ?, otl_no = ?,
+                total_dispatched = ?, value = ?, duty = ?, remarks = ?, 
+                to_warehouse = ?, authorised_officer = ?
+            WHERE id = ?
+        `, [
+            dispatch_date, flight_no, consignment_id || null, 
+            shipping_bill_no || null, shipping_bill_date || null,
+            registration_no_of_means_of_transport || null, nature_of_removal || 'Re-export', 
+            purpose || 'Re-export', otl_no || null,
+            totalQty, totalValue, totalDuty, remarks || null, 
+            to_warehouse || null, authorised_officer || null, req.params.id
+        ]);
+
+        // Replace items
+        await connection.query('DELETE FROM outward_items WHERE outward_id = ?', [req.params.id]);
+        
+        for (const item of items) {
+            await connection.query(`
+                INSERT INTO outward_items (outward_id, inward_item_id, inward_id, item_id, description, qty_dispatched, value, duty)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [req.params.id, item.inward_item_id, item.inward_id, item.item_id || null, item.description, item.qty_dispatched, item.value, item.duty]);
+        }
+
+        await connection.commit();
+        res.json({ message: 'Outward dispatch updated successfully' });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ error: error.message });
     } finally {
         connection.release();
     }
