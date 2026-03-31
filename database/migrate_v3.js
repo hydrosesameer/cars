@@ -32,6 +32,20 @@ async function migrate() {
             console.log("'registration_no_of_means_of_transport' already exists.");
         }
 
+        // 3. Add authorised_officer if missing
+        console.log("Checking for 'authorised_officer' column...");
+        const [cols3] = await db.query(`
+            SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'outward_entries' AND COLUMN_NAME = 'authorised_officer'
+        `);
+        
+        if (cols3.length === 0) {
+            console.log("Adding 'authorised_officer' column to outward_entries...");
+            await db.query("ALTER TABLE outward_entries ADD COLUMN authorised_officer VARCHAR(100) DEFAULT NULL");
+        } else {
+            console.log("'authorised_officer' already exists.");
+        }
+
         console.log("✅ Migration V3 completed successfully.");
         process.exit(0);
     } catch (error) {

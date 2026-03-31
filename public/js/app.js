@@ -372,7 +372,7 @@ function loadFlatpickrAndInit() {
     initDatePickers();
   } else {
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
+    script.src = 'https://cdn.jsdelivr.net/npm/flatpickr?v=70';
     document.head.appendChild(script);
     
     if (!document.querySelector('link[href*="flatpickr"]')) {
@@ -2527,6 +2527,10 @@ async function printExternalTransferAnnexure(outwardId) {
       return;
     }
     
+    // Dynamic Officer and Airport Info
+    const officerName = entry.authorised_officer || "Authorized Signatory";
+    const airportName = entry.branch_name || "COCHIN";
+    const airportCode = entry.branch_airport || "COK";
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '.');
 
     let html = `
@@ -2552,9 +2556,11 @@ async function printExternalTransferAnnexure(outwardId) {
         .annexure-table th, .annexure-table td { border: 1px solid #000; padding: 4px 2px; text-align: center; vertical-align: middle; word-wrap: break-word; }
         .annexure-table th { font-weight: bold; background: #f8f8f8; height: 35px; }
         
-        .signature-section { margin-top: 30px; display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 20px; font-size: 11px; font-weight: bold; text-align: center; }
-        .sig-box { min-height: 60px; display: flex; flex-direction: column; justify-content: flex-end; }
-        .sig-label { border-top: 1px solid transparent; padding-top: 5px; }
+        .signature-section { margin-top: 50px; display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 20px; font-size: 11px; font-weight: bold; text-align: center; }
+        .sig-box { min-height: 50px; display: flex; flex-direction: column; justify-content: flex-end; }
+        .sig-name { text-transform: uppercase; margin-bottom: 0px; line-height: 1; }
+        .sig-title { margin-top: 0px; line-height: 1; }
+        .sig-label { border-top: 1px solid transparent; }
 
         @media print {
           @page { size: landscape; margin: 0.2cm; }
@@ -2575,7 +2581,7 @@ async function printExternalTransferAnnexure(outwardId) {
           <div class="annexure-to">
             To<br>
             The Deputy Commissioner of Customs,<br>
-            Air Cargo complex, CIAL, Cochin-683575
+            Air Cargo complex, ${airportCode}, ${airportName}
           </div>
           <div class="annexure-date">${today}</div>
         </div>
@@ -2622,8 +2628,8 @@ async function printExternalTransferAnnexure(outwardId) {
                 <td>${idx + 1}</td>
                 <td>${item.bond_no || '-'}</td>
                 <td>${formatDate(item.bond_date)}</td>
-                <td>${item.be_no || '-'}</td>
-                <td>${formatDate(item.be_date)}</td>
+                <td>${item.report_be_no || '-'}</td>
+                <td>${formatDate(item.report_be_date)}</td>
                 <td style="text-align: left; padding-left: 5px;">${item.item_description}</td>
                 <td>${item.original_qty}</td>
                 <td style="font-weight: bold;">${item.qty_dispatched}</td>
@@ -2640,17 +2646,17 @@ async function printExternalTransferAnnexure(outwardId) {
 
         <div class="signature-section">
           <div class="sig-box">
-            <div style="margin-bottom: 40px; text-transform: uppercase;">${userName}</div>
-            <div>OFFICER AIRLINE STORE</div>
-            <div>CAFS, COCHIN</div>
+            <div class="sig-name">${officerName}</div>
+            <div class="sig-title">OFFICER AIRLINE STORE</div>
+            <div>CAFS, ${airportName}</div>
           </div>
           <div class="sig-box">
-            <div>Bond-Officer(Air-Bonds)</div>
-            <div>CIAL. COCHIN</div>
+            <div class="sig-name">Bond-Officer(Air-Bonds)</div>
+            <div class="sig-title">${airportCode}. ${airportName}</div>
           </div>
           <div class="sig-box">
-            <div>Suppt. Of Customs(Air-Bonds)</div>
-            <div>CIAL, COCHIN</div>
+            <div class="sig-name">Suppt. Of Customs(Air-Bonds)</div>
+            <div class="sig-title">${airportCode}, ${airportName}</div>
           </div>
         </div>
       </div>
@@ -5010,7 +5016,8 @@ async function saveOutwardPage() {
     shipping_bill_date: document.getElementById("out-sb-date").value || null,
     registration_no_of_means_of_transport: document.getElementById("out-transport-reg").value || null,
     items: window.outwardItemsTemp || [],
-    branch_id: getAuthUser().branch_id || null
+    branch_id: getAuthUser().branch_id || null,
+    authorised_officer: document.getElementById("out-authorised-officer").value || null
   };
 
   console.log("Attempting to save Outward Dispatch:", data);

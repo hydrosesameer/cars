@@ -71,12 +71,16 @@
                       <input type="text" class="form-control" id="out-transport-reg" />
                     </div>
                   </div>
-                  <div class="form-grid-2">
+                  <div class="form-grid-3">
                     <div class="form-group">
                       <label class="form-label">Consignment / Airline</label>
                       <select class="form-control searchable" id="out-consignment" onchange="fetchAvailableForConsignmentPage(this.value)">
                         <option value="">Select Airline</option>
                       </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Authorised Officer Name</label>
+                      <input type="text" class="form-control" id="out-authorised-officer" placeholder="Name for Signature" />
                     </div>
                     <div class="form-group">
                       <label class="form-label">Remarks</label>
@@ -117,7 +121,7 @@
 
     <div id="toast-container" class="toast-container"></div>
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
-    <script src="js/app.js?v=67"></script>
+    <script src="js/app.js?v=70"></script>
     <script>document.addEventListener('DOMContentLoaded', async () => {
         if (!authCheck()) return; 
         initNavigation();

@@ -77,9 +77,11 @@ router.get('/:id', async (req, res) => {
     const db = req.app.locals.db;
     try {
         const [entries] = await db.query(`
-            SELECT oe.*, c.name as consignment_name 
+            SELECT oe.*, c.name as consignment_name,
+                   b.name as branch_name, b.airport_code as branch_airport
             FROM outward_entries oe 
             LEFT JOIN consignments c ON oe.consignment_id = c.id 
+            LEFT JOIN branches b ON oe.branch_id = b.id
             WHERE oe.id = ?
         `, [req.params.id]);
         
@@ -111,7 +113,7 @@ router.post('/', async (req, res) => {
     const { 
         dispatch_date, flight_no, consignment_id, shipping_bill_no, shipping_bill_date,
         registration_no_of_means_of_transport, nature_of_removal, purpose, otl_no,
-        remarks, items, branch_id, to_warehouse
+        remarks, items, branch_id, to_warehouse, authorised_officer
     } = req.body;
 
     const connection = await db.getConnection();
@@ -155,12 +157,12 @@ router.post('/', async (req, res) => {
             INSERT INTO outward_entries (
                 dispatch_date, flight_no, consignment_id, shipping_bill_no, shipping_bill_date,
                 registration_no_of_means_of_transport, nature_of_removal, purpose, otl_no,
-                total_dispatched, value, duty, remarks, inward_id, branch_id, to_warehouse
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                total_dispatched, value, duty, remarks, inward_id, branch_id, to_warehouse, authorised_officer
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             dispatch_date, flight_no, consignment_id || null, shipping_bill_no || null, shipping_bill_date || null,
             registration_no_of_means_of_transport || null, nature_of_removal || 'Re-export', purpose || 'Re-export', otl_no || null,
-            totalQty, totalValue, totalDuty, remarks || null, primaryInwardId, branch_id || null, to_warehouse || null
+            totalQty, totalValue, totalDuty, remarks || null, primaryInwardId, branch_id || null, to_warehouse || null, authorised_officer || null
         ]);
 
         const outwardId = result.insertId;
