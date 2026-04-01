@@ -1855,7 +1855,8 @@ async function viewOutward(id) {
 
 // ============================================
 // Current Stock Page
-// ====================================let currentStockView = 'bond';
+// ============================================
+let currentStockView = 'bond';
 let stockViewCounter = 0;
 
 async function toggleStockView(view) {
