@@ -1934,37 +1934,45 @@ async function loadStockPage() {
     } else {
         tableHead.innerHTML = `
             <tr>
-                <th>Product Description</th>
-                <th>Category / Unit</th>
-                <th>Current Stock</th>
-                <th>Min Stock</th>
-                <th>Status</th>
+                <th>Bond No</th>
+                <th>Item Description</th>
+                <th>Consignment</th>
+                <th>Total Recv</th>
+                <th>Total Disp</th>
+                <th>Returns</th>
+                <th>Available</th>
+                <th style="min-width: 120px;">Bond Expiries</th>
             </tr>
         `;
 
-        const response = await fetch(`/api/reports/total-stock${branchId ? `?branch_id=${branchId}` : ''}`);
+        const response = await fetch(`/api/reports/detailed-stock${branchId ? `?branch_id=${branchId}` : ''}`);
         if (viewId !== stockViewCounter) return;
         
         const items = await response.json();
         
-        paginateTable('stock-table', items, (i) => {
-            const isLow = i.available_stock <= i.min_stock && i.min_stock > 0;
-            const percent = i.min_stock > 0 ? ((i.available_stock / i.min_stock) * 100).toFixed(0) : 100;
-            
+        paginateTable('stock-table', items, (e) => {
+            const expiries = [
+                e.initial_bonding_expiry,
+                e.extended_bonding_expiry1,
+                e.extended_bonding_expiry2,
+                e.extended_bonding_expiry3
+            ].filter(d => d).map(d => formatDate(d));
+
             return `
                 <tr>
-                    <td><strong>${i.description}</strong></td>
-                    <td><small class="text-muted">${i.category || 'General'}</small><br>${i.unit || 'PCS'}</td>
-                    <td style="color: ${isLow ? '#e74c3c' : '#2ecc71'}; font-weight: bold; font-size: 1.1rem;">${i.available_stock}</td>
-                    <td class="text-muted">${i.min_stock || 0}</td>
-                    <td>
-                        <span class="badge" style="background: ${isLow ? '#ffeded' : '#eefaf3'}; color: ${isLow ? '#e74c3c' : '#2ecc71'}; padding: 6px 10px; border-radius: 4px; font-weight: 600;">
-                            ${isLow ? `LOW (${percent}%)` : 'OK'}
-                        </span>
+                    <td><strong>${e.bond_no || "-"}</strong></td>
+                    <td style="max-width:300px; white-space:normal;">${e.item_name || "-"}</td>
+                    <td>${e.consignment_name || "-"}</td>
+                    <td>${e.total_qty || 0}</td>
+                    <td>${e.total_dispatched || 0}</td>
+                    <td class="${e.total_returned > 0 ? "stock-medium" : ""}">${e.total_returned || "-"}</td>
+                    <td class="${e.available_stock < 10 ? "stock-medium" : "stock-high"}"><strong>${e.available_stock}</strong></td>
+                    <td style="font-size: 0.8rem; line-height: 1.2;">
+                        ${expiries.map((ex, idx) => `<div>${idx === 0 ? '' : `<i class="fas fa-arrow-right" style="font-size:0.6rem; margin-right:4px;"></i>`}${ex}</div>`).join('')}
                     </td>
                 </tr>
             `;
-        }, 5);
+        }, 8);
     }
   } catch (error) {
     console.error("Stock load error:", error);

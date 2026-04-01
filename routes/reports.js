@@ -950,6 +950,50 @@ router.get('/reorder-levels', async (req, res) => {
     }
 });
 
+// Detailed Stock (Bond + Item-wise)
+router.get('/detailed-stock', async (req, res) => {
+    const db = req.app.locals.db;
+    const { branch_id } = req.query;
+    try {
+        let query = `
+            SELECT 
+                ii.id as inward_item_id,
+                COALESCE(ii.bond_no, ie.bond_no) as bond_no,
+                ii.description as item_name,
+                c.name as consignment_name,
+                ii.qty as total_qty,
+                COALESCE((SELECT SUM(oi.qty_dispatched) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) as total_dispatched,
+                COALESCE((SELECT SUM(oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) as total_returned,
+                (
+                    ii.qty - 
+                    COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) -
+                    COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0) +
+                    COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse WHERE rse.inward_item_id = ii.id), 0)
+                ) as available_stock,
+                ie.initial_bonding_expiry,
+                ie.extended_bonding_expiry1,
+                ie.extended_bonding_expiry2,
+                ie.extended_bonding_expiry3
+            FROM inward_items ii
+            JOIN inward_entries ie ON ii.inward_id = ie.id
+            LEFT JOIN consignments c ON ie.consignment_id = c.id
+            WHERE 1=1
+        `;
+        let params = [];
+        if (branch_id) {
+            query += ' AND ie.branch_id = ?';
+            params.push(parseInt(branch_id));
+        }
+        query += ' HAVING available_stock > 0 ORDER BY bond_no ASC, item_name ASC';
+        
+        const [items] = await db.query(query, params);
+        res.json(items);
+    } catch (error) {
+        console.error('Detailed Stock Query Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Total Item-wise Stock (Aggregated)
 router.get('/total-stock', async (req, res) => {
     const db = req.app.locals.db;
