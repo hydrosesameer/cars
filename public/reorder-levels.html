@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reorder Levels - CAFS Inventory</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/index.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <aside class="sidebar" id="sidebar-container"></aside>
+
+      <main class="main-content">
+        <header class="top-bar" id="top-bar-container"></header>
+        <div class="content-body">
+          <div class="page-header">
+              <h1 class="page-title">Reordering Levels (Low Stock Alerts)</h1>
+              <div class="action-btns">
+                  <button class="btn btn-secondary" onclick="window.print()">
+                      <i class="fas fa-print"></i> Print
+                  </button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-body" style="padding: 0">
+                <table class="table" id="reorder-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Category</th>
+                      <th>Current Stock</th>
+                      <th>Min Level</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reorder-body">
+                      <tr><td colspan="5" class="text-center">Loading alerts...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+        </div>
+      </main>
+    </div>
+    <div id="toast-container" class="toast-container"></div>
+    <script src="js/app.js?v=60"></script>
+    <script>document.addEventListener('DOMContentLoaded', async () => {
+        if (!authCheck()) return; 
+        initNavigation();
+        await loadReorderLevels(); 
+    });</script>
+  </body>
+</html>

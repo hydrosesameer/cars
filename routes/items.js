@@ -29,7 +29,7 @@ router.get('/:id', async (req, res) => {
 // Create new item
 router.post('/', async (req, res) => {
     const db = req.app.locals.db;
-    const { description, unit, hsn_code } = req.body;
+    const { description, unit, hsn_code, min_stock } = req.body;
     
     if (!description) {
         return res.status(400).json({ error: 'Description is required' });
@@ -37,10 +37,10 @@ router.post('/', async (req, res) => {
     
     try {
         const [result] = await db.query(
-            'INSERT INTO items (description, unit, hsn_code) VALUES (?, ?, ?)',
-            [description, unit || 'PCS', hsn_code || null]
+            'INSERT INTO items (description, unit, hsn_code, min_stock) VALUES (?, ?, ?, ?)',
+            [description, unit || 'PCS', hsn_code || null, min_stock || 0]
         );
-        res.status(201).json({ id: result.insertId, description, unit: unit || 'PCS', hsn_code });
+        res.status(201).json({ id: result.insertId, description, unit: unit || 'PCS', hsn_code, min_stock });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -49,14 +49,14 @@ router.post('/', async (req, res) => {
 // Update item
 router.put('/:id', async (req, res) => {
     const db = req.app.locals.db;
-    const { description, unit, hsn_code } = req.body;
+    const { description, unit, hsn_code, min_stock } = req.body;
     
     try {
         await db.query(
-            'UPDATE items SET description = ?, unit = ?, hsn_code = ? WHERE id = ?',
-            [description, unit, hsn_code || null, req.params.id]
+            'UPDATE items SET description = ?, unit = ?, hsn_code = ?, min_stock = ? WHERE id = ?',
+            [description, unit, hsn_code || null, min_stock || 0, req.params.id]
         );
-        res.json({ id: parseInt(req.params.id), description, unit, hsn_code });
+        res.json({ id: parseInt(req.params.id), description, unit, hsn_code, min_stock });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -65,11 +65,27 @@ router.put('/:id', async (req, res) => {
 // Delete item
 router.delete('/:id', async (req, res) => {
     const db = req.app.locals.db;
+    const itemId = req.params.id;
     try {
-        await db.query('DELETE FROM items WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Item deleted' });
+        // Check if item has transactions
+        const [inwardCount] = await db.query('SELECT COUNT(*) as count FROM inward_items WHERE item_id = ?', [itemId]);
+        const [outwardCount] = await db.query('SELECT COUNT(*) as count FROM outward_items WHERE item_id = ?', [itemId]);
+        const [damagedCount] = await db.query('SELECT COUNT(*) as count FROM damaged_items WHERE inward_item_id IN (SELECT id FROM inward_items WHERE item_id = ?)', [itemId]);
+        
+        const totalCount = (inwardCount[0].count || 0) + (outwardCount[0].count || 0) + (damagedCount[0].count || 0);
+
+        if (totalCount > 0) {
+            return res.status(400).json({ error: 'Cannot delete item. There are existing inward or outward transactions associated with this item.' });
+        }
+
+        await db.query('DELETE FROM items WHERE id = ?', [itemId]);
+        res.json({ message: 'Item deleted successfully' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        if (error.code === 'ER_ROW_IS_REFERENCED_2') {
+            res.status(400).json({ error: 'Cannot delete item. It is being referenced by other records in the system.' });
+        } else {
+            res.status(500).json({ error: error.message });
+        }
     }
 });
 

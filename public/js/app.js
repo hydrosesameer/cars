@@ -854,15 +854,16 @@ async function deleteDamageReport(id) {
 // Items CRUD
 // ============================================
 
-async function loadItems() {
+async function loadItemsPage() {
   try {
-    items = await apiCall("/items");
+    const items = await apiCall("/items");
     paginateTable('items-table', items, (item) => `
             <tr>
                 <td>${item.id}</td>
-                <td>${item.description}</td>
+                <td><strong>${item.description}</strong></td>
                 <td>${item.unit}</td>
                 <td>${item.hsn_code || "-"}</td>
+                <td>${item.min_stock || 0}</td>
                 <td>
                     <div class="action-btns">
                         <button class="action-btn" onclick="editItem(${item.id})" title="Edit"><i class="fas fa-edit"></i></button>
@@ -870,7 +871,7 @@ async function loadItems() {
                     </div>
                 </td>
             </tr>
-        `, 5);
+        `, 10);
   } catch (error) {
     console.error("Items load error:", error);
   }
@@ -886,16 +887,15 @@ function openItemModal(item = null) {
             </div>
             <div class="form-group">
                 <label class="form-label">Unit</label>
-                <select class="form-control searchable" id="item-unit" data-create="true">
-                    <option value="PCS" ${item?.unit === "PCS" ? "selected" : ""}>PCS</option>
-                    <option value="BTL" ${item?.unit === "BTL" ? "selected" : ""}>BTL</option>
-                    <option value="CASE" ${item?.unit === "CASE" ? "selected" : ""}>CASE</option>
-                    <option value="KG" ${item?.unit === "KG" ? "selected" : ""}>KG</option>
-                </select>
+                <input type="text" class="form-control" id="item-unit" value="${item?.unit || "PCS"}">
             </div>
             <div class="form-group">
-                <label class="form-label">Code</label>
+                <label class="form-label">Code (HSN)</label>
                 <input type="text" class="form-control" id="item-hsn" value="${item?.hsn_code || ""}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Min Stock (Reorder Level)</label>
+                <input type="number" class="form-control" id="item-min-stock" value="${item?.min_stock || 0}">
             </div>
         </div>
     `;
@@ -914,6 +914,7 @@ async function saveItem(id) {
     description: document.getElementById("item-description").value,
     unit: document.getElementById("item-unit").value,
     hsn_code: document.getElementById("item-hsn").value,
+    min_stock: parseInt(document.getElementById("item-min-stock").value) || 0,
   };
   if (!data.description) {
     showToast("Description is required", "error");
@@ -922,30 +923,34 @@ async function saveItem(id) {
   try {
     if (id) {
       await apiCall(`/items/${id}`, "PUT", data);
-      showToast("Item updated");
+      showToast("Item updated successfully");
     } else {
       await apiCall("/items", "POST", data);
-      showToast("Item added");
+      showToast("Item created successfully");
     }
     closeModal();
-    loadItems();
+    loadItemsPage(); 
   } catch (error) {
-    console.error("Save item error:", error);
+    showToast("Error saving item: " + error.message, "error");
   }
 }
 
 function editItem(id) {
-  const item = items.find((i) => i.id === id);
-  if (item) openItemModal(item);
+  apiCall(`/items/${id}`).then(item => openItemModal(item));
 }
+
 async function deleteItem(id) {
-  if (!confirm("Delete this item?")) return;
+  const user = getAuthUser();
+  if (user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
+    return showToast('You do not have permission to delete products.', 'error');
+  }
+  if (!confirm("Delete this item? This will fail if there are active transactions.")) return;
   try {
     await apiCall(`/items/${id}`, "DELETE");
-    showToast("Item deleted");
-    loadItems();
+    showToast("Item deleted successfully");
+    loadItemsPage();
   } catch (error) {
-    console.error("Delete item error:", error);
+    showToast("Delete error: " + error.message, "error");
   }
 }
 
@@ -1850,56 +1855,120 @@ async function viewOutward(id) {
 
 // ============================================
 // Current Stock Page
-// ============================================
+// ====================================let currentStockView = 'bond';
+let stockViewCounter = 0;
+
+async function toggleStockView(view) {
+    currentStockView = view;
+    stockViewCounter++;
+    
+    const bondBtn = document.getElementById('view-bondwise');
+    const itemBtn = document.getElementById('view-itemwise');
+    const tbody = document.querySelector("#stock-table tbody");
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    
+    if (view === 'item') {
+        bondBtn.classList.replace('btn-primary', 'btn-outline-secondary');
+        itemBtn.classList.replace('btn-outline-secondary', 'btn-primary');
+    } else {
+        itemBtn.classList.replace('btn-primary', 'btn-outline-secondary');
+        bondBtn.classList.replace('btn-outline-secondary', 'btn-primary');
+    }
+    
+    await loadStockPage();
+}
 
 async function loadStockPage() {
+  const viewId = stockViewCounter;
   const user = getAuthUser();
-  const branchFilterGroup = document.getElementById("stock-branch-filter-group");
   const branchFilterEl = document.getElementById("stock-branch-filter");
-  const pageTitleEl = document.getElementById("stock-page-title");
-  
-  // Show Branch Filter if Super Admin
-  if (user.role === 'SUPER_ADMIN' && branchFilterGroup && branchFilterEl) {
-    branchFilterGroup.style.display = 'block';
-    if (branchFilterEl.options.length <= 1) {
-      try {
-        const branches = await apiCall("/branches");
-        branchFilterEl.innerHTML = '<option value="">All Godowns (Stock Master)</option>' + 
-          branches.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
-        
-        branchFilterEl.onchange = () => {
-          const selectedName = branchFilterEl.options[branchFilterEl.selectedIndex].text;
-          if (pageTitleEl) {
-             pageTitleEl.innerText = branchFilterEl.value ? `Stock Manager: ${selectedName}` : "Current Warehouse Stock";
-          }
-          loadStockPage();
-        };
-      } catch (err) { console.error("Failed to load branches", err); }
-    }
-  }
+  const tableHead = document.querySelector("#stock-table thead");
+  if (!tableHead) return;
 
   const uiBranchFilter = branchFilterEl ? branchFilterEl.value : '';
   const branchId = user.role !== 'SUPER_ADMIN' ? (user.branch_id || '') : uiBranchFilter;
 
   try {
-    const entries = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
-    const stockEntries = entries.filter((e) => e.available_stock > 0);
-    paginateTable('stock-table', stockEntries, (e) => `
+    if (currentStockView === 'bond') {
+        tableHead.innerHTML = `
             <tr>
-                <td><strong>${e.bond_no}</strong></td>
-                <td>${e.items_list || e.description || "-"}</td>
-                <td>${e.consignment_name || "-"}</td>
-                <td>${e.total_qty || e.qty_received}</td>
-                <td>${e.total_dispatched || 0}</td>
-                <td class="${e.total_returned > 0 ? "stock-medium" : ""}">${e.total_returned || "-"}</td>
-                <td class="${e.available_stock < 10 ? "stock-medium" : "stock-high"}"><strong>${e.available_stock}</strong></td>
-                <td>${formatDate(e.initial_bonding_expiry)}</td>
+                <th>Bond No</th>
+                <th>Items List</th>
+                <th>Consignment</th>
+                <th>Total Recv</th>
+                <th>Total Disp</th>
+                <th>Returns</th>
+                <th>Available</th>
+                <th style="min-width: 120px;">Bond Expiries</th>
             </tr>
-        `, 8);
+        `;
+
+        const entries = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
+        if (viewId !== stockViewCounter) return;
+
+        const stockEntries = entries.filter((e) => e.available_stock > 0);
+        paginateTable('stock-table', stockEntries, (e) => {
+            const expiries = [
+                e.initial_bonding_expiry,
+                e.extended_bonding_expiry1,
+                e.extended_bonding_expiry2,
+                e.extended_bonding_expiry3
+            ].filter(d => d).map(d => formatDate(d));
+
+            return `
+                <tr>
+                    <td><strong>${e.bond_no}</strong></td>
+                    <td>${e.items_list || e.description || "-"}</td>
+                    <td>${e.consignment_name || "-"}</td>
+                    <td>${e.total_qty || e.qty_received}</td>
+                    <td>${e.total_dispatched || 0}</td>
+                    <td class="${e.total_returned > 0 ? "stock-medium" : ""}">${e.total_returned || "-"}</td>
+                    <td class="${e.available_stock < 10 ? "stock-medium" : "stock-high"}"><strong>${e.available_stock}</strong></td>
+                    <td style="font-size: 0.8rem; line-height: 1.2;">
+                        ${expiries.map((ex, idx) => `<div>${idx === 0 ? '' : `<i class="fas fa-arrow-right" style="font-size:0.6rem; margin-right:4px;"></i>`}${ex}</div>`).join('')}
+                    </td>
+                </tr>
+            `;
+        }, 8);
+    } else {
+        tableHead.innerHTML = `
+            <tr>
+                <th>Product Description</th>
+                <th>Category / Unit</th>
+                <th>Current Stock</th>
+                <th>Min Stock</th>
+                <th>Status</th>
+            </tr>
+        `;
+
+        const response = await fetch(`/api/reports/total-stock${branchId ? `?branch_id=${branchId}` : ''}`);
+        if (viewId !== stockViewCounter) return;
+        
+        const items = await response.json();
+        
+        paginateTable('stock-table', items, (i) => {
+            const isLow = i.available_stock <= i.min_stock && i.min_stock > 0;
+            const percent = i.min_stock > 0 ? ((i.available_stock / i.min_stock) * 100).toFixed(0) : 100;
+            
+            return `
+                <tr>
+                    <td><strong>${i.description}</strong></td>
+                    <td><small class="text-muted">${i.category || 'General'}</small><br>${i.unit || 'PCS'}</td>
+                    <td style="color: ${isLow ? '#e74c3c' : '#2ecc71'}; font-weight: bold; font-size: 1.1rem;">${i.available_stock}</td>
+                    <td class="text-muted">${i.min_stock || 0}</td>
+                    <td>
+                        <span class="badge" style="background: ${isLow ? '#ffeded' : '#eefaf3'}; color: ${isLow ? '#e74c3c' : '#2ecc71'}; padding: 6px 10px; border-radius: 4px; font-weight: 600;">
+                            ${isLow ? `LOW (${percent}%)` : 'OK'}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }, 5);
+    }
   } catch (error) {
     console.error("Stock load error:", error);
   }
-}
+}window.toggleStockView = toggleStockView;
 
 // ============================================
 // Reports
@@ -5841,7 +5910,7 @@ async function submitItemBulkUpload() {
 }
 
 function downloadItemSampleCSV() {
-  const headers = ['description', 'unit', 'hsn_code', 'category', 'min_stock'];
+  const headers = ['description', 'unit', 'code', 'category', 'min stock'];
   const sampleData = [
     ['JOHNNIE WALKER BLACK LABEL 75CL', 'BTL', '220830', 'WHISKY', '10'],
     ['MARLBORO GOLD 200S', 'CTN', '240220', 'CIGARETTES', '5']
@@ -5865,10 +5934,10 @@ async function handleBulkStockUpload(input) {
 }
 
 function downloadSampleCSV() {
-  const headers = ['date', 'consignment', 'description', 'qty', 'unit', 'value', 'duty', 'bond_no', 'bond_expiry'];
+  const headers = ['bond number', 'bond expiry', 'description', 'min_stock', 'balance', 'code', 'initial expiry 1', 'initial expiry 2', 'initial expiry 3', 'date', 'consignment'];
   const sampleData = [
-    ['2026-03-28', 'AIR INDIA', 'WHISKY 750ML', '100', 'BTL', '50000', '10000', 'BOND-TEST-001', '2027-03-28'],
-    ['2026-03-28', 'EMIRATES', 'CIGARETTES CARTON', '50', 'CTN', '25000', '5000', 'BOND-TEST-002', '2027-03-28']
+    ['BOND-TEST-001', '2027-03-28', 'WHISKY 750ML', '10', '100', '220830', '2027-06-28', '', '', '2026-03-28', 'AIR INDIA'],
+    ['BOND-TEST-002', '2027-03-28', 'CIGARETTES CARTON', '5', '50', '240220', '', '', '', '2026-03-28', 'EMIRATES']
   ];
   
   let csvContent = headers.join(',') + '\n' + sampleData.map(row => row.join(',')).join('\n');
@@ -5957,8 +6026,6 @@ function initGlobalSearch(searchInput) {
 
 function initNavigation() {
     const user = getAuthUser();
-    
-    // Initialize sidebar state from localStorage
     if (localStorage.getItem('sidebar-collapsed') === 'true') {
         document.body.classList.add('collapsed-sidebar');
     }
@@ -5966,7 +6033,6 @@ function initNavigation() {
     const sidebar = document.getElementById('sidebar-container');
     const topBar = document.getElementById('top-bar-container');
     
-    // Auto-populate if containers exist
     if (sidebar) {
         sidebar.innerHTML = `
             <div class="sidebar-header">
@@ -5983,51 +6049,40 @@ function initNavigation() {
                 <div class="nav-label">Inventory View</div>
                 <a href="stock.html" class="nav-item ${window.location.pathname.endsWith('stock.html') ? 'active' : ''}"><i class="fas fa-boxes"></i> <span>Stock Master</span></a>
                 <a href="bond-extensions.html" class="nav-item ${window.location.pathname.endsWith('bond-extensions.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Bond Extensions</span></a>
+                <a href="reorder-levels.html" class="nav-item ${window.location.pathname.endsWith('reorder-levels.html') ? 'active' : ''}"><i class="fas fa-layer-group"></i> <span>Reorder Levels</span></a>
                 
                 <div class="nav-label">Master Data</div>
-                <a href="items.html" class="nav-item"><i class="fas fa-wine-bottle"></i> <span>Product Master</span></a>
-                <a href="consignments.html" class="nav-item"><i class="fas fa-building"></i> <span>Airline Master</span></a>
-                <a href="airline-masters.html" class="nav-item ${window.location.pathname.endsWith('airline-masters.html') ? 'active' : ''}"><i class="fas fa-plane"></i> <span>Airline Flights</span></a>
+                <a href="items.html" class="nav-item ${window.location.pathname.endsWith('items.html') ? 'active' : ''}"><i class="fas fa-wine-bottle"></i> <span>Product Master</span></a>
+                <a href="consignments.html" class="nav-item ${window.location.pathname.endsWith('consignments.html') ? 'active' : ''}"><i class="fas fa-building"></i> <span>Airline/Agent Master</span></a>
+                <a href="airline-masters.html" class="nav-item ${window.location.pathname.endsWith('airline-masters.html') ? 'active' : ''}"><i class="fas fa-plane"></i> <span>Flight Masters</span></a>
                 
                 <div class="nav-label">Administration</div>
                 <a href="users.html" class="nav-item ${window.location.pathname.endsWith('users.html') ? 'active' : ''}"><i class="fas fa-users-cog"></i> <span>User Management</span></a>
                 <a href="branches.html" class="nav-item ${window.location.pathname.endsWith('branches.html') ? 'active' : ''}"><i class="fas fa-warehouse"></i> <span>Godown Management</span></a>
               ` : `
                 <div class="nav-label">Transactions</div>
-                <a href="inward.html" class="nav-item ${window.location.pathname.endsWith('inward.html') ? 'active' : ''}"><i class="fas fa-arrow-down"></i> <span>Inward Billing</span></a>
-                <a href="outward.html" class="nav-item ${window.location.pathname.endsWith('outward.html') ? 'active' : ''}"><i class="fas fa-arrow-up"></i> <span>Outward Billing</span></a>
+                <a href="inward.html" class="nav-item ${window.location.pathname.endsWith('inward.html') ? 'active' : ''}"><i class="fas fa-arrow-down"></i> <span>Inward Entry</span></a>
+                <a href="outward.html" class="nav-item ${window.location.pathname.endsWith('outward.html') ? 'active' : ''}"><i class="fas fa-arrow-up"></i> <span>Outward Entry</span></a>
                 <a href="stock.html" class="nav-item ${window.location.pathname.endsWith('stock.html') ? 'active' : ''}"><i class="fas fa-boxes"></i> <span>Balance Stock</span></a>
                 <a href="damaged.html" class="nav-item ${window.location.pathname.endsWith('damaged.html') ? 'active' : ''}"><i class="fas fa-heart-broken"></i> <span>Damaged Stock</span></a>
-                <a href="return-stock.html" class="nav-item ${window.location.pathname.endsWith('return-stock.html') ? 'active' : ''}"><i class="fas fa-undo"></i> <span>Return Stock</span></a>
+                <a href="return-stock.html" class="nav-item ${window.location.pathname.endsWith('return-stock.html') ? 'active' : ''}"><i class="fas fa-undo"></i> <span>Bag Returns</span></a>
                 
                 <div class="nav-label">Tasks & Alerts</div>
                 <a href="bond-extensions.html" class="nav-item ${window.location.pathname.endsWith('bond-extensions.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Bond Extensions</span></a>
-
+                <a href="reorder-levels.html" class="nav-item ${window.location.pathname.endsWith('reorder-levels.html') ? 'active' : ''}"><i class="fas fa-layer-group"></i> <span>Reorder Levels</span></a>
+ 
                 <div class="nav-label">Reports</div>
                 <a href="form-a.html" class="nav-item ${window.location.pathname.endsWith('form-a.html') ? 'active' : ''}"><i class="fas fa-file-invoice"></i> <span>Form-A Ledger</span></a>
                 <a href="form-b.html" class="nav-item ${window.location.pathname.endsWith('form-b.html') ? 'active' : ''}"><i class="fas fa-file-contract"></i> <span>Form-B Monthly</span></a>
                 <a href="detailed-stock.html" class="nav-item ${window.location.pathname.endsWith('detailed-stock.html') ? 'active' : ''}"><i class="fas fa-list-ul"></i> <span>Detailed Stock</span></a>
                 <a href="shipping-bill.html" class="nav-item ${window.location.pathname.endsWith('shipping-bill.html') ? 'active' : ''}"><i class="fas fa-file-export"></i> <span>Shipping Bill</span></a>
                 <a href="external-transfer.html" class="nav-item ${window.location.pathname.endsWith('external-transfer.html') ? 'active' : ''}"><i class="fas fa-exchange-alt"></i> <span>External Transfer</span></a>
-
+ 
                 <div class="nav-label">Master Data</div>
                 <a href="items.html" class="nav-item ${window.location.pathname.endsWith('items.html') ? 'active' : ''}"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
                 <a href="consignments.html" class="nav-item ${window.location.pathname.endsWith('consignments.html') ? 'active' : ''}"><i class="fas fa-building"></i> <span>Consignments</span></a>
-                <a href="airline-masters.html" class="nav-item ${window.location.pathname.endsWith('airline-masters.html') ? 'active' : ''}"><i class="fas fa-plane"></i> <span>Airline Masters</span></a>
-                <a href="country-masters.html" class="nav-item ${window.location.pathname.endsWith('country-masters.html') ? 'active' : ''}"><i class="fas fa-globe"></i> <span>Country Masters</span></a>
               `}
             </nav>
-            <div class="sidebar-footer">
-              <div class="user-profile">
-                <div class="user-avatar">${(user.username || 'GU').substring(0,2).toUpperCase()}</div>
-                <div class="user-info">
-                  <div class="user-name" style="margin-bottom: 2px;">${user.name || 'Guest'}</div>
-                  <div class="user-username" style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.5); margin-bottom: 4px;">@${user.username}</div>
-                  <div class="user-role">${user.branch_name ? `Godown: ${user.branch_name}` : user.role}</div>
-                </div>
-                <button class="btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
-              </div>
-            </div>
         `;
     }
 
@@ -6038,163 +6093,68 @@ function initNavigation() {
             <input type="text" placeholder="Search bond no, BE no, flight..." id="global-search" />
           </div>
           <div class="top-actions">
-            ${user.role !== 'SUPER_ADMIN' ? `
-              <div class="page-header">
-                <h1 class="page-title">External Transfer Annexure</h1>
-                <div class="page-actions">
-                  <button class="btn btn-secondary" onclick="window.location.href='outward-entry.html?nature=Transfer'">
-                    <i class="fas fa-plus"></i> New External Transfer
-                  </button>
-                  <button class="btn btn-primary" onclick="window.location.href='shipping-bill-entry.html'">
-                    <i class="fas fa-plus"></i> New Shipping Bill
-                  </button>
-                </div>
-              </div>
-              <button class="btn btn-primary" onclick="window.location.href='inward-entry.html'">
-                <i class="fas fa-plus"></i> New Inward
-              </button>
-              <button class="btn btn-secondary" onclick="window.location.href='outward-entry.html'">
-                <i class="fas fa-plus"></i> New Outward
-              </button>
-            ` : ''}
             <div class="divider"></div>
-            <button class="icon-btn" title="Refresh" onclick="window.location.reload()">
-              <i class="fas fa-sync-alt"></i>
-            </button>
+            <button class="btn btn-sm btn-logout" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
           </div>
         `;
-
-        // Initialize advanced Global Search
         const searchInput = document.getElementById("global-search");
         if (searchInput) initGlobalSearch(searchInput);
     }
 }
 
 function toggleSidebar() {
-    const isCollapsed = document.body.classList.toggle('collapsed-sidebar');
-    localStorage.setItem('sidebar-collapsed', isCollapsed);
+    document.body.classList.toggle('collapsed-sidebar');
+    localStorage.setItem('sidebar-collapsed', document.body.classList.contains('collapsed-sidebar'));
 }
 
-// Super Admin Tools - Auto Login / User Swapper
 async function renderSuperAdminTools() {
     const container = document.getElementById("super-admin-tools");
-    const userList = document.getElementById("auto-login-user-list");
-    if (!container || !userList) return;
-
+    if (!container) return;
     container.style.display = "block";
-    
-    // Add styles if not present
-    if (!document.getElementById("super-admin-styles")) {
-        const style = document.createElement("style");
-        style.id = "super-admin-styles";
-        style.innerHTML = `
-            .auto-login-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                gap: 1rem;
-                margin-top: 1rem;
-            }
-            .user-switch-btn {
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                padding: 1rem;
-                border-radius: 10px;
-                cursor: pointer;
-                text-align: left;
-                transition: all 0.2s;
-                display: flex;
-                flex-direction: column;
-                position: relative;
-                overflow: hidden;
-            }
-            .user-switch-btn:hover {
-                background: white;
-                border-color: var(--accent-blue);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-                transform: translateY(-2px);
-            }
-            .user-switch-btn .u-name {
-                font-weight: 700;
-                font-size: 1rem;
-                color: #1e293b;
-                margin-bottom: 0.25rem;
-            }
-            .user-switch-btn .u-role {
-                font-size: 0.75rem;
-                color: #64748b;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }
-            .user-switch-btn .u-branch {
-                margin-top: 0.5rem;
-                font-size: 0.8rem;
-                color: var(--accent-blue);
-                font-weight: 500;
-            }
-            .user-switch-btn::after {
-                content: '\\f0e2';
-                font-family: 'Font Awesome 5 Free';
-                font-weight: 900;
-                position: absolute;
-                right: -10px;
-                bottom: -10px;
-                font-size: 2rem;
-                opacity: 0.05;
-                transition: all 0.2s;
-            }
-            .user-switch-btn:hover::after {
-                right: 5px;
-                bottom: 5px;
-                opacity: 0.1;
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
     try {
         const users = await apiCall('/auth/users');
-        userList.innerHTML = users.map(u => `
-            <button class="user-switch-btn" onclick="autoLogin(${u.id})">
-                <span class="u-name">${u.name || u.username}</span>
-                <span class="u-role">${u.role}</span>
-                <span class="u-branch">${u.branch_name || 'All Branches'}</span>
-            </button>
-        `).join('');
-    } catch (err) {
-        userList.innerHTML = '<div class="error">Failed to load users for auto-login</div>';
-    }
+        const list = document.getElementById("auto-login-user-list");
+        if (list) list.innerHTML = users.map(u => `<button onclick="autoLogin(${u.id})">${u.name}</button>`).join('');
+    } catch (err) {}
 }
 
 async function autoLogin(userId) {
-    try {
-        const res = await fetch('/api/auth/auto-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Auto-login failed');
-
-        localStorage.setItem('cafs_auth', JSON.stringify({
-            token: data.token,
-            user: data.user,
-            timestamp: Date.now()
-        }));
-
-        showToast("Switching user...", "success");
-        setTimeout(() => window.location.href = 'index.html', 800);
-    } catch (err) {
-        showToast(err.message, "error");
-    }
+    const res = await fetch('/api/auth/auto-login', { method: 'POST', body: JSON.stringify({ userId }) });
+    const data = await res.json();
+    localStorage.setItem('cafs_auth', JSON.stringify({ token: data.token, user: data.user, timestamp: Date.now() }));
+    window.location.href = 'index.html';
 }
 
-// Make functions global
-window.loadUsersPage = loadUsersPage;
-window.openUserModal = openUserModal;
-window.saveUser = saveUser;
-window.loadBranchesPage = loadBranchesPage;
-window.openBranchModal = openBranchModal;
-window.saveBranch = saveBranch;
+async function loadReorderLevels() {
+    const user = getAuthUser();
+    const branch_id = user ? user.branch_id : null;
+    const response = await fetch(`/api/reports/reorder-levels?branch_id=${branch_id || ''}`);
+    const items = await response.json();
+    const tbody = document.getElementById('reorder-body');
+    if (tbody) tbody.innerHTML = items.map(i => {
+        const percent = i.min_stock > 0 ? ((i.available_stock / i.min_stock) * 100).toFixed(0) : 0;
+        const outOfStock = i.available_stock <= 0;
+        return `
+            <tr>
+                <td>
+                    <div style="font-weight: 600;">${i.description}</div>
+                    <div style="font-size: 11px; color: #666;"><i class="fas fa-plane"></i> ${i.airline_name || 'All Airlines'}</div>
+                </td>
+                <td>${i.category || 'General'}</td>
+                <td style="color: ${outOfStock ? '#e74c3c' : '#f39c12'}; font-weight: bold; font-size: 1.1rem;">${i.available_stock}</td>
+                <td class="text-muted">${i.min_stock}</td>
+                <td>
+                    <span class="badge" style="background: ${outOfStock ? '#ffeded' : '#fff9db'}; color: ${outOfStock ? '#e74c3c' : '#f39c12'}; padding: 4px 8px; border-radius: 4px; font-weight: 600;">
+                        ${outOfStock ? 'Out of Stock' : `Low (${percent}%)`}
+                    </span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
 window.initNavigation = initNavigation;
-window.autoLogin = autoLogin;
+window.toggleSidebar = toggleSidebar;
 window.renderSuperAdminTools = renderSuperAdminTools;
+window.autoLogin = autoLogin;
+window.loadReorderLevels = loadReorderLevels;

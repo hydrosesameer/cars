@@ -32,6 +32,9 @@ router.post('/items', upload.single('file'), async (req, res) => {
                         continue;
                     }
 
+                    const min_stock = parseInt(row['min stock'] || row.min_stock) || 0;
+                    const code = row.code || row.hsn_code || null;
+
                     // Check if already exists
                     const [existing] = await connection.query('SELECT id FROM items WHERE description = ?', [description]);
                     
@@ -42,14 +45,18 @@ router.post('/items', upload.single('file'), async (req, res) => {
                         `, [
                             description, 
                             row.unit || 'PCS', 
-                            row.hsn_code || null, 
+                            code, 
                             row.category || null, 
-                            parseInt(row.min_stock) || 0
+                            min_stock
                         ]);
                         processed++;
                     } else {
-                        // Optional: Update existing? For now, just skip/ignore duplicates to keep it safe.
-                        ignored++;
+                        // Update existing min_stock and code
+                        await connection.query(`
+                            UPDATE items SET min_stock = ?, hsn_code = ? 
+                            WHERE id = ?
+                        `, [min_stock, code, existing[0].id]);
+                        processed++; // Count as processed since we updated it
                     }
                 }
 
@@ -86,7 +93,20 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                 // Group items by (date, consignment, bond_no)
                 const groups = {};
                 for (const row of results) {
-                    const key = `${row.date || ''}_${row.consignment || ''}_${row.bond_no || ''}`;
+                    // Normalize fields
+                    row.bond_no = row['bond number'] || row.bond_no;
+                    row.bond_expiry = row['bond expiry'] || row.bond_expiry;
+                    row.expiry_1 = row['initial expiry 1'] || row.expiry_1;
+                    row.expiry_2 = row['initial expiry 2'] || row.expiry_2;
+                    row.expiry_3 = row['initial expiry 3'] || row.expiry_3;
+                    row.min_stock = row['min stock'] || row.min_stock;
+
+                    // Check required fields
+                    if (!row.bond_no || !row.bond_expiry || !row.description || !row.min_stock) {
+                        continue; // Skip invalid rows or handle error
+                    }
+
+                    const key = `${row.date || ''}_${row.consignment || ''}_${row.bond_no}`;
                     if (!groups[key]) groups[key] = [];
                     groups[key].push(row);
                 }
@@ -113,42 +133,50 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                         INSERT INTO inward_entries (
                             be_no, be_date, bond_no, bond_date, date_of_receipt, 
                             consignment_id, branch_id, mode_of_receipt, warehouse_code,
-                            qty_received, initial_bonding_expiry
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            qty_received, initial_bonding_expiry,
+                            extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `, [
                         'BULK-' + Date.now(), dateOfReceipt, 
-                        firstRow.bond_no || ('B' + Date.now()), firstRow.bond_date || null,
+                        firstRow.bond_no, firstRow.bond_date || dateOfReceipt,
                         dateOfReceipt, consignmentId, branch_id || null, 'BULK UPLOAD', 'Cok15003',
-                        groupRows.reduce((sum, r) => sum + (parseInt(r.qty) || 0), 0),
-                        firstRow.bond_expiry || null
+                        groupRows.reduce((sum, r) => sum + (parseInt(r.balance || r.qty) || 0), 0),
+                        firstRow.bond_expiry,
+                        firstRow.expiry_1 || null, firstRow.expiry_2 || null, firstRow.expiry_3 || null
                     ]);
 
                     const inwardId = entryResult.insertId;
 
                     // 3. Create inward items for this entry
                     for (const row of groupRows) {
-                        // Find or create item
+                        // Find or create item and update its min_stock / code
                         let itemId = null;
-                        if (row.description) {
-                            const [items] = await connection.query('SELECT id FROM items WHERE description = ?', [row.description.trim()]);
-                            if (items.length > 0) {
-                                itemId = items[0].id;
-                            } else {
-                                const [res] = await connection.query('INSERT INTO items (description, unit) VALUES (?, ?)', [row.description.trim(), row.unit || 'PCS']);
-                                itemId = res.insertId;
-                            }
+                        const [items] = await connection.query('SELECT id FROM items WHERE description = ?', [row.description.trim()]);
+                        
+                        const hsn_code = row.code || row.hsn_code || null;
+                        const min_stock = parseInt(row.min_stock) || 0;
+
+                        if (items.length > 0) {
+                            itemId = items[0].id;
+                            await connection.query('UPDATE items SET min_stock = ?, hsn_code = ? WHERE id = ?', [min_stock, hsn_code, itemId]);
+                        } else {
+                            const [res] = await connection.query('INSERT INTO items (description, unit, min_stock, hsn_code) VALUES (?, ?, ?, ?)', 
+                                [row.description.trim(), row.unit || 'PCS', min_stock, hsn_code]);
+                            itemId = res.insertId;
                         }
 
                         await connection.query(`
                             INSERT INTO inward_items (
                                 inward_id, item_id, description, qty, unit, 
-                                value, duty, bond_no, bond_expiry
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                value, duty, bond_no, bond_expiry,
+                                extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         `, [
-                            inwardId, itemId, row.description || 'Unknown Item', 
-                            row.qty || 0, row.unit || 'PCS',
+                            inwardId, itemId, row.description, 
+                            row.balance || row.qty || 0, row.unit || 'PCS',
                             row.value || 0, row.duty || 0,
-                            row.bond_no || null, row.bond_expiry || null
+                            row.bond_no, row.bond_expiry,
+                            row.expiry_1 || null, row.expiry_2 || null, row.expiry_3 || null
                         ]);
                     }
                 }

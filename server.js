@@ -133,7 +133,12 @@ async function initDB() {
           { table: 'inward_items', column: 'bond_date', sql: 'ALTER TABLE inward_items ADD COLUMN bond_date DATE' },
           { table: 'inward_items', column: 'bond_expiry', sql: 'ALTER TABLE inward_items ADD COLUMN bond_expiry DATE' },
           { table: 'branches', column: 'shipping_place', sql: 'ALTER TABLE branches ADD COLUMN shipping_place VARCHAR(255)' },
-          { table: 'inward_items', column: 'extension_status', sql: "ALTER TABLE inward_items ADD COLUMN extension_status ENUM('NONE', 'APPLIED') DEFAULT 'NONE'" }
+          { table: 'inward_items', column: 'extension_status', sql: "ALTER TABLE inward_items ADD COLUMN extension_status ENUM('NONE', 'APPLIED') DEFAULT 'NONE'" },
+          { table: 'inward_items', column: 'extended_bonding_expiry1', sql: 'ALTER TABLE inward_items ADD COLUMN extended_bonding_expiry1 DATE' },
+          { table: 'inward_items', column: 'extended_bonding_expiry2', sql: 'ALTER TABLE inward_items ADD COLUMN extended_bonding_expiry2 DATE' },
+          { table: 'inward_items', column: 'extended_bonding_expiry3', sql: 'ALTER TABLE inward_items ADD COLUMN extended_bonding_expiry3 DATE' },
+          { table: 'items', column: 'min_stock', sql: 'ALTER TABLE items ADD COLUMN min_stock INT DEFAULT 0' },
+          { table: 'branches', column: 'airport_code', sql: 'ALTER TABLE branches ADD COLUMN airport_code VARCHAR(10) DEFAULT NULL' }
         ];
 
         for (const m of migrations) {

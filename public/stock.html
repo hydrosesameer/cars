@@ -26,14 +26,17 @@
                 <option value="">All Godowns</option>
               </select>
             </div>
-            <div class="action-btns">
+            <div class="btn-group" style="margin-left: 20px; display: flex; gap: 5px; background: #f8f9fa; padding: 4px; border-radius: 8px; border: 1px solid #dee2e6;">
+              <button class="btn btn-sm btn-primary" id="view-bondwise" onclick="toggleStockView('bond')">Bond-wise</button>
+              <button class="btn btn-sm btn-outline-secondary" id="view-itemwise" onclick="toggleStockView('item')">Item-wise</button>
+            </div>
+            <div class="action-btns" style="margin-left: auto;">
               <button class="btn btn-secondary" onclick="downloadSampleCSV()">
                 <i class="fas fa-download"></i> Sample CSV
               </button>
               <button class="btn btn-primary" onclick="openBulkUploadModal()">
                 <i class="fas fa-upload"></i> Bulk Upload Stock
               </button>
-              <input type="file" id="bulk-stock-input" style="display: none" accept=".csv" onchange="handleBulkStockUpload(this)">
             </div>
           </div>
           <div class="card">

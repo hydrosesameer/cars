@@ -151,9 +151,18 @@ router.post('/', async (req, res) => {
 
         for (const item of items) {
             await connection.query(`
-                INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent, bond_no, bond_date, bond_expiry)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null]);
+                INSERT INTO inward_items (
+                    inward_id, item_id, description, qty, unit, value, duty, hsn_code, 
+                    shelf_life_date, duty_percent, bond_no, bond_date, bond_expiry,
+                    extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, 
+                item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, 
+                item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null,
+                item.extended_bonding_expiry1 || null, item.extended_bonding_expiry2 || null, item.extended_bonding_expiry3 || null
+            ]);
         }
 
         await connection.commit();
@@ -220,15 +229,31 @@ router.put('/:id', async (req, res) => {
             if (itemId && currentIds.has(itemId)) {
                 await connection.query(`
                     UPDATE inward_items SET 
-                        item_id = ?, description = ?, qty = ?, unit = ?, value = ?, duty = ?, hsn_code = ?, shelf_life_date = ?, duty_percent = ?, bond_no = ?, bond_date = ?, bond_expiry = ?
+                        item_id = ?, description = ?, qty = ?, unit = ?, value = ?, duty = ?, hsn_code = ?, shelf_life_date = ?, duty_percent = ?, bond_no = ?, bond_date = ?, bond_expiry = ?,
+                        extended_bonding_expiry1 = ?, extended_bonding_expiry2 = ?, extended_bonding_expiry3 = ?
                     WHERE id = ?
-                `, [item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null, item.id]);
+                `, [
+                    item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, 
+                    item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, 
+                    item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null,
+                    item.extended_bonding_expiry1 || null, item.extended_bonding_expiry2 || null, item.extended_bonding_expiry3 || null,
+                    item.id
+                ]);
                 processedIds.add(itemId);
             } else {
                 await connection.query(`
-                    INSERT INTO inward_items (inward_id, item_id, description, qty, unit, value, duty, hsn_code, shelf_life_date, duty_percent, bond_no, bond_date, bond_expiry)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `, [inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null]);
+                    INSERT INTO inward_items (
+                        inward_id, item_id, description, qty, unit, value, duty, hsn_code, 
+                        shelf_life_date, duty_percent, bond_no, bond_date, bond_expiry,
+                        extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, 
+                    item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, 
+                    item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null,
+                    item.extended_bonding_expiry1 || null, item.extended_bonding_expiry2 || null, item.extended_bonding_expiry3 || null
+                ]);
             }
         }
 

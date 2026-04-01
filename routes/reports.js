@@ -172,9 +172,9 @@ router.get('/form-b', async (req, res) => {
                     ie.date_of_order_section_60 as date_of_order_section_60,
                     ie.sl_no_import_invoice as sl_no_import_invoice,
                     COALESCE(ii.bond_expiry, ie.initial_bonding_expiry) as initial_bonding_expiry,
-                    ie.extended_bonding_expiry1 as extended_bonding_expiry1,
-                    ie.extended_bonding_expiry2 as extended_bonding_expiry2,
-                    ie.extended_bonding_expiry3 as extended_bonding_expiry3,
+                    COALESCE(ii.extended_bonding_expiry1, ie.extended_bonding_expiry1) as extended_bonding_expiry1,
+                    COALESCE(ii.extended_bonding_expiry2, ie.extended_bonding_expiry2) as extended_bonding_expiry2,
+                    COALESCE(ii.extended_bonding_expiry3, ie.extended_bonding_expiry3) as extended_bonding_expiry3,
                     COALESCE(ii.unit_value, ie.value_rate) as value_rate,
                     ii.description as description,
                     ii.description as remarks
@@ -401,9 +401,13 @@ router.get('/expiry-alerts', async (req, res) => {
                        ie.extended_bonding_expiry1,
                        ie.initial_bonding_expiry,
                        
-                       -- Determine Active Expiry Date
+                       -- Determine Active Expiry Date (Item level first, then entry level fallback)
                        COALESCE(
+                           ii.extended_bonding_expiry3,
+                           ii.extended_bonding_expiry2,
+                           ii.extended_bonding_expiry1,
                            ii.bond_expiry, 
+                           ie.extended_bonding_expiry3,
                            ie.extended_bonding_expiry2, 
                            ie.extended_bonding_expiry1, 
                            ie.initial_bonding_expiry
@@ -412,7 +416,11 @@ router.get('/expiry-alerts', async (req, res) => {
                        -- Calculate Days Left
                        DATEDIFF(
                            COALESCE(
+                               ii.extended_bonding_expiry3,
+                               ii.extended_bonding_expiry2,
+                               ii.extended_bonding_expiry1,
                                ii.bond_expiry, 
+                               ie.extended_bonding_expiry3,
                                ie.extended_bonding_expiry2, 
                                ie.extended_bonding_expiry1, 
                                ie.initial_bonding_expiry
@@ -532,9 +540,21 @@ router.put('/update-expiries', async (req, res) => {
     try {
         await db.query('START TRANSACTION');
 
-        // Update item-level bond expiry
-        let itemQuery = 'UPDATE inward_items SET bond_expiry = ? WHERE id = ?';
-        await db.query(itemQuery, [bond_expiry || null, inward_item_id]);
+        // Update item-level bond expiry and its extensions
+        let itemQuery = `
+            UPDATE inward_items 
+            SET bond_expiry = ?,
+                extended_bonding_expiry1 = ?,
+                extended_bonding_expiry2 = ?,
+                extended_bonding_expiry3 = ?
+            WHERE id = ?`;
+        await db.query(itemQuery, [
+            bond_expiry || null, 
+            extended_bonding_expiry1 || null,
+            extended_bonding_expiry2 || null,
+            extended_bonding_expiry3 || null,
+            inward_item_id
+        ]);
 
         // Update entry-level expiries (affects all items in this entry)
         let entryQuery = `
@@ -879,6 +899,84 @@ router.get('/external-transfers', async (req, res) => {
         const [entries] = await db.query(query, params);
         res.json(entries);
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// Reorder Levels Report (Airline-wise)
+router.get('/reorder-levels', async (req, res) => {
+    const db = req.app.locals.db;
+    const { branch_id } = req.query;
+    try {
+        let query = `
+            SELECT i.id, i.description, i.category, i.min_stock, c.name as airline_name,
+                (
+                    COALESCE((SELECT SUM(ii.qty) FROM inward_items ii 
+                             JOIN inward_entries ie ON ii.inward_id = ie.id 
+                             WHERE ii.item_id = i.id AND ie.consignment_id = c.id 
+                             ${branch_id ? 'AND ie.branch_id = ?' : ''}), 0) -
+                    COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi 
+                             JOIN outward_entries oe ON oi.outward_id = oe.id 
+                             WHERE oi.item_id = i.id AND oe.consignment_id = c.id 
+                             ${branch_id ? 'AND oe.branch_id = ?' : ''}), 0) -
+                    COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di 
+                             JOIN inward_items iid ON di.inward_item_id = iid.id 
+                             JOIN inward_entries ie_dam ON iid.inward_id = ie_dam.id
+                             WHERE iid.item_id = i.id AND ie_dam.consignment_id = c.id 
+                             ${branch_id ? 'AND di.branch_id = ?' : ''}), 0) +
+                    COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse 
+                             JOIN inward_items iid_ret ON rse.inward_item_id = iid_ret.id 
+                             JOIN inward_entries ie_ret ON iid_ret.inward_id = ie_ret.id
+                             WHERE iid_ret.item_id = i.id AND ie_ret.consignment_id = c.id 
+                             ${branch_id ? 'AND rse.branch_id = ?' : ''}), 0)
+                ) as available_stock
+            FROM items i
+            CROSS JOIN consignments c
+            WHERE i.status = 'ACTIVE' AND i.min_stock > 0 AND c.status = 'ACTIVE'
+            HAVING available_stock <= i.min_stock AND available_stock >= 0
+            ORDER BY c.name ASC, i.description ASC
+        `;
+        let params = [];
+        if (branch_id) {
+            const bId = parseInt(branch_id);
+            params.push(bId, bId, bId, bId);
+        }
+        const [results] = await db.query(query, params);
+        res.json(results);
+    } catch (error) {
+        console.error('Airline-wise Reorder Query Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Total Item-wise Stock (Aggregated)
+router.get('/total-stock', async (req, res) => {
+    const db = req.app.locals.db;
+    const { branch_id } = req.query;
+    try {
+        let query = `
+            SELECT i.id, i.description, i.category, i.min_stock, i.unit,
+                (
+                    COALESCE((SELECT SUM(ii.qty) FROM inward_items ii JOIN inward_entries ie ON ii.inward_id = ie.id WHERE ii.item_id = i.id ${branch_id ? 'AND ie.branch_id = ?' : ''}), 0) -
+                    COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi JOIN outward_entries oe ON oi.outward_id = oe.id WHERE oi.item_id = i.id ${branch_id ? 'AND oe.branch_id = ?' : ''}), 0) -
+                    COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di JOIN inward_items iid ON di.inward_item_id = iid.id WHERE iid.item_id = i.id ${branch_id ? 'AND di.branch_id = ?' : ''}), 0) +
+                    COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse JOIN inward_items iid ON rse.inward_item_id = iid.id WHERE iid.item_id = i.id ${branch_id ? 'AND rse.branch_id = ?' : ''}), 0)
+                ) as available_stock
+            FROM items i
+            WHERE i.status = 'ACTIVE'
+            HAVING available_stock > 0
+            ORDER BY i.description ASC
+        `;
+        let params = [];
+        if (branch_id) {
+            const bId = parseInt(branch_id);
+            params.push(bId, bId, bId, bId);
+        }
+        const [items] = await db.query(query, params);
+        res.json(items);
+    } catch (error) {
+        console.error('Total Stock Query Error:', error);
         res.status(500).json({ error: error.message });
     }
 });
