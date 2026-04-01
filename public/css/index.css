@@ -2174,6 +2174,81 @@ textarea.form-control {
   background: linear-gradient(135deg, #0d9488, #14b8a6, #2dd4bf);
 }
 
+/* Auto-Login Grid (Super Admin) */
+.auto-login-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.auto-login-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+  text-align: left;
+}
+
+.auto-login-btn:hover {
+  border-color: var(--primary-light);
+  background: var(--primary-50);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.auto-login-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.auto-login-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.auto-login-name {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-login-role {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.auto-login-arrow {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  transition: all var(--transition-fast);
+}
+
+.auto-login-btn:hover .auto-login-arrow {
+  color: var(--primary);
+  transform: translateX(2px);
+}
+
 /* Quick Access Cards */
 .dash-quick-access {
   display: grid;

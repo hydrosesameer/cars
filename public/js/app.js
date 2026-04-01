@@ -6092,6 +6092,20 @@ function initNavigation() {
                 <a href="consignments.html" class="nav-item ${window.location.pathname.endsWith('consignments.html') ? 'active' : ''}"><i class="fas fa-building"></i> <span>Consignments</span></a>
               `}
             </nav>
+            <div class="sidebar-footer" style="padding: 15px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: auto;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05);">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px; flex-shrink: 0;">
+                        ${(user.name || user.full_name || 'U').charAt(0).toUpperCase()}
+                    </div>
+                    <div class="logo-text" style="overflow: hidden;">
+                        <div style="font-weight: 600; font-size: 13px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${user.name || user.full_name || 'User'}</div>
+                        <div style="font-size: 11px; color: #94a3b8; text-transform: capitalize;">${(user.role || 'STAFF').replace(/_/g, ' ').toLowerCase()}</div>
+                    </div>
+                </div>
+                <button onclick="logout()" class="nav-item" style="width: 100%; text-align: left; background: rgba(239,68,68,0.1); border: none; cursor: pointer; color: #f87171; border-radius: 6px; padding: 10px 12px; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
+                </button>
+            </div>
         `;
     }
 
@@ -6123,7 +6137,16 @@ async function renderSuperAdminTools() {
     try {
         const users = await apiCall('/auth/users');
         const list = document.getElementById("auto-login-user-list");
-        if (list) list.innerHTML = users.map(u => `<button onclick="autoLogin(${u.id})">${u.name}</button>`).join('');
+        if (list) list.innerHTML = users.map(u => `
+            <button class="auto-login-btn" onclick="autoLogin(${u.id})">
+                <div class="auto-login-avatar">${(u.name || 'U').charAt(0).toUpperCase()}</div>
+                <div class="auto-login-info">
+                    <span class="auto-login-name">${u.name || 'User'}</span>
+                    <span class="auto-login-role">${(u.role || 'staff').replace('_', ' ')}</span>
+                </div>
+                <i class="fas fa-sign-in-alt auto-login-arrow"></i>
+            </button>
+        `).join('');
     } catch (err) {}
 }
 
