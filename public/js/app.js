@@ -2932,116 +2932,167 @@ async function openReturnStockModal() {
   try {
     const user = getAuthUser();
     const branchId = user.role !== 'SUPER_ADMIN' ? user.branch_id : null;
-    const records = await apiCall(`/inward${branchId ? `?branch_id=${branchId}` : ''}`);
-    returnInwardEntries = records.filter(e => e.available_stock > 0);
+    // Fetch outward entries (Shipping Bills)
+    const records = await apiCall(`/outward${branchId ? `?branch_id=${branchId}` : ''}`);
     
-    const bondOptions = '<option value="">Select Bond...</option>' + 
-      returnInwardEntries.map(e => `<option value="${e.id}">${e.bond_no} (Bal: ${e.available_stock})</option>`).join('');
+    const sbOptions = '<option value="">Select Shipping Bill / Flight...</option>' + 
+      records.map(e => `<option value="${e.id}">${e.shipping_bill_no || 'N/A'} - ${e.flight_no} (${formatDate(e.dispatch_date)})</option>`).join('');
     
     const modalHtml = `
       <form id="form-return-stock" onsubmit="event.preventDefault(); saveReturnStock();">
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label class="form-label">Return Date *</label>
-          <input type="date" class="form-control" id="return-date" required value="${new Date().toISOString().split('T')[0]}" />
+        <div class="form-row">
+          <div class="form-group" style="flex: 1; margin-bottom: 1rem;">
+            <label class="form-label">Return Date *</label>
+            <input type="date" class="form-control" id="return-date" required value="${new Date().toISOString().split('T')[0]}" />
+          </div>
+          <div class="form-group" style="flex: 2; margin-bottom: 1rem;">
+            <label class="form-label">Select Shipping Bill *</label>
+            <select class="form-control searchable" id="return-sb" required onchange="fetchReturnItemsBySB(this.value)">
+              ${sbOptions}
+            </select>
+          </div>
         </div>
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label class="form-label">Select Inward Bond *</label>
-          <select class="form-control searchable" id="return-bond" required onchange="fetchReturnItems(this.value)">
-            ${bondOptions}
-          </select>
+
+        <div id="return-items-container" style="margin-top: 1.5rem; display: none;">
+          <h4 style="margin-bottom: 1rem; color: var(--primary);">Dispatched Items</h4>
+          <table class="table" style="font-size: 0.9rem;">
+            <thead>
+              <tr>
+                <th>Bond No</th>
+                <th>Item Description</th>
+                <th>Dispatched</th>
+                <th style="width: 120px;">Return Qty</th>
+              </tr>
+            </thead>
+            <tbody id="return-items-tbody"></tbody>
+          </table>
         </div>
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label class="form-label">Select Item to Return *</label>
-          <select class="form-control searchable" id="return-item" required onchange="updateReturnQtyMax(this)">
-            <option value="">Select Item (Choose Bond First)</option>
-          </select>
+
+        <div class="form-row" style="margin-top: 1.5rem;">
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label">Authorised By</label>
+            <input type="text" class="form-control" id="return-auth" placeholder="Authoriser Name" />
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label">Reason / Remarks</label>
+            <input type="text" class="form-control" id="return-remarks" placeholder="Optional remarks..." />
+          </div>
         </div>
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label class="form-label">Quantity to Return *</label>
-          <input type="number" class="form-control" id="return-qty" required min="1" />
-          <small class="text-muted" id="return-qty-help">Select an item to see available stock.</small>
-        </div>
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label class="form-label">Reason / Remarks</label>
-          <textarea class="form-control" id="return-remarks" rows="3"></textarea>
-        </div>
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label class="form-label">Authorised By</label>
-          <input type="text" class="form-control" id="return-auth" />
-        </div>
+
         <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 2rem;">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary">Process Return</button>
+          <button type="submit" class="btn btn-primary">Process Bag Return</button>
         </div>
       </form>
     `;
     
-    openModal('Return Stock to Origin', modalHtml, '');
+    openModal('Bag Return (by Shipping Bill)', modalHtml, '');
+    // Adjust modal width for table
+    const modal = document.querySelector('.modal');
+    if (modal) modal.style.width = '800px';
+    
   } catch (error) {
-    showToast("Failed to load bonds", "error");
+    console.error("Return modal error:", error);
+    showToast("Failed to load shipping bills", "error");
   }
 }
 
-async function fetchReturnItems(inwardId) {
-  const itemSelect = document.getElementById('return-item');
-  if (itemSelect.tomselect) itemSelect.tomselect.destroy();
-  if (!inwardId) {
-    itemSelect.innerHTML = '<option value="">Select Item (Choose Bond First)</option>';
-    initSearchableSelects();
+let currentSBItems = [];
+let currentBranchId = null;
+
+async function fetchReturnItemsBySB(outwardId) {
+  const container = document.getElementById('return-items-container');
+  const tbody = document.getElementById('return-items-tbody');
+  
+  if (!outwardId) {
+    container.style.display = 'none';
+    currentBranchId = null;
     return;
   }
   
   try {
-    const items = await apiCall(`/inward/${inwardId}/stock`);
-    returnInwardItems = items.filter(i => i.available > 0);
-    itemSelect.innerHTML = '<option value="">Select Item...</option>' + 
-      returnInwardItems.map(i => `<option value="${i.id}">${i.description} (Bal: ${i.available})</option>`).join('');
-    initSearchableSelects();
+    const data = await apiCall(`/outward/${outwardId}`);
+    currentSBItems = data.items || [];
+    currentBranchId = data.branch_id;
+    
+    if (currentSBItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center">No items found for this bill.</td></tr>';
+    } else {
+      tbody.innerHTML = currentSBItems.map((item, idx) => `
+        <tr>
+          <td><small>${item.bond_no}</small></td>
+          <td><strong>${item.description}</strong></td>
+          <td>${item.qty_dispatched}</td>
+          <td>
+            <input type="number" 
+                   class="form-control return-qty-input" 
+                   data-idx="${idx}" 
+                   value="0" 
+                   min="0" 
+                   max="${item.qty_dispatched}" 
+                   style="height: 30px; padding: 2px 8px;" />
+          </td>
+        </tr>
+      `).join('');
+    }
+    container.style.display = 'block';
   } catch (error) {
     showToast("Failed to load items", "error");
   }
 }
 
-function updateReturnQtyMax(selectElem) {
-  const itemId = selectElem.value;
-  const qtyInput = document.getElementById('return-qty');
-  const helpText = document.getElementById('return-qty-help');
+async function saveReturnStock() {
+  const returnDate = document.getElementById('return-date').value;
+  const authBy = document.getElementById('return-auth').value;
+  const remarks = document.getElementById('return-remarks').value;
+  const user = getAuthUser();
+  const branchId = currentBranchId || user.branch_id;
   
-  if (!itemId) {
-    qtyInput.max = "";
-    helpText.innerText = "Select an item to see available stock.";
+  if (!branchId) {
+    showToast("Godown identification failed. Please re-select the Shipping Bill.", "error");
     return;
   }
   
-  const item = returnInwardItems.find(i => i.id == itemId);
-  if (item) {
-    qtyInput.max = item.available;
-    helpText.innerText = `Max available to return: ${item.available}`;
-  }
-}
+  const qtyInputs = document.querySelectorAll('.return-qty-input');
+  const returnActions = [];
+  
+  qtyInputs.forEach(input => {
+    const qty = parseInt(input.value) || 0;
+    const idx = parseInt(input.getAttribute('data-idx'));
+    const item = currentSBItems[idx];
+    
+    if (qty > 0 && item) {
+      returnActions.push(apiCall('/return-stock', 'POST', {
+        return_date: returnDate,
+        inward_id: item.inward_id,
+        inward_item_id: item.inward_item_id,
+        qty_returned: qty,
+        remarks: remarks || "Bag Return",
+        authorised_by: authBy,
+        branch_id: branchId
+      }));
+    }
+  });
 
-async function saveReturnStock() {
-  const data = {
-    return_date: document.getElementById('return-date').value,
-    inward_id: document.getElementById('return-bond').value,
-    inward_item_id: document.getElementById('return-item').value,
-    qty_returned: parseInt(document.getElementById('return-qty').value),
-    remarks: document.getElementById('return-remarks').value,
-    authorised_by: document.getElementById('return-auth').value
-  };
-
-  if (!data.inward_id || !data.inward_item_id || !data.qty_returned) {
-    showToast("Please fill all required fields", "error");
+  if (returnActions.length === 0) {
+    showToast("Please enter at least one quantity to return", "error");
     return;
   }
 
   try {
-    await apiCall('/return-stock', 'POST', data);
-    showToast("Return stock processed successfully");
+    const btn = document.querySelector('#form-return-stock button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Processing...";
+    }
+    
+    await Promise.all(returnActions);
+    showToast("Bag return processed successfully!");
     closeModal();
     loadReturnStockPage();
   } catch (error) {
     console.error("Save return stock error:", error);
+    showToast("Some returns failed to process", "error");
   }
 }
 
