@@ -17,7 +17,10 @@
         <div class="content-body">
           <div class="page-header">
               <h1 class="page-title">Reordering Levels (Low Stock Alerts)</h1>
-              <div class="action-btns">
+              <div class="action-btns" style="display: flex; gap: 10px;">
+                  <select id="reorder-airline-filter" class="form-control" style="width: 250px;" onchange="loadReorderLevels()">
+                      <option value="">All Airlines / Consignments</option>
+                  </select>
                   <button class="btn btn-secondary" onclick="window.print()">
                       <i class="fas fa-print"></i> Print
                   </button>
@@ -39,13 +42,14 @@
                       <tr><td colspan="5" class="text-center">Loading alerts...</td></tr>
                   </tbody>
                 </table>
+                <div class="pagination-container" id="reorder-table-pagination" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-top: 1px solid #edf2f9;"></div>
               </div>
             </div>
         </div>
       </main>
     </div>
     <div id="toast-container" class="toast-container"></div>
-    <script src="js/app.js?v=60"></script>
+    <script src="js/app.js?v=61"></script>
     <script>document.addEventListener('DOMContentLoaded', async () => {
         if (!authCheck()) return; 
         initNavigation();

@@ -6126,32 +6126,61 @@ async function autoLogin(userId) {
     window.location.href = 'index.html';
 }
 
+let cachedReorderItems = [];
+
 async function loadReorderLevels() {
     const user = getAuthUser();
     const branch_id = user ? user.branch_id : null;
-    const response = await fetch(`/api/reports/reorder-levels?branch_id=${branch_id || ''}`);
-    const items = await response.json();
-    const tbody = document.getElementById('reorder-body');
-    if (tbody) tbody.innerHTML = items.map(i => {
-        const percent = i.min_stock > 0 ? ((i.available_stock / i.min_stock) * 100).toFixed(0) : 0;
-        const outOfStock = i.available_stock <= 0;
-        return `
-            <tr>
-                <td>
-                    <div style="font-weight: 600;">${i.description}</div>
-                    <div style="font-size: 11px; color: #666;"><i class="fas fa-plane"></i> ${i.airline_name || 'All Airlines'}</div>
-                </td>
-                <td>${i.category || 'General'}</td>
-                <td style="color: ${outOfStock ? '#e74c3c' : '#f39c12'}; font-weight: bold; font-size: 1.1rem;">${i.available_stock}</td>
-                <td class="text-muted">${i.min_stock}</td>
-                <td>
-                    <span class="badge" style="background: ${outOfStock ? '#ffeded' : '#fff9db'}; color: ${outOfStock ? '#e74c3c' : '#f39c12'}; padding: 4px 8px; border-radius: 4px; font-weight: 600;">
-                        ${outOfStock ? 'Out of Stock' : `Low (${percent}%)`}
-                    </span>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    
+    // Fetch filter list once
+    const filterEl = document.getElementById('reorder-airline-filter');
+    if (filterEl && filterEl.options.length <= 1) {
+        try {
+            const airlines = await apiCall('/consignments');
+            const uniqueAirlines = [...new Set(airlines.map(a => a.name))].sort();
+            uniqueAirlines.forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                filterEl.appendChild(opt);
+            });
+        } catch(e) { console.error("Could not fetch airlines", e); }
+    }
+
+    try {
+        if (cachedReorderItems.length === 0) {
+            const response = await fetch(`/api/reports/reorder-levels?branch_id=${branch_id || ''}`);
+            cachedReorderItems = await response.json();
+        }
+
+        let filtered = cachedReorderItems;
+        if (filterEl && filterEl.value) {
+            filtered = filtered.filter(i => (i.airline_name || '') === filterEl.value);
+        }
+
+        paginateTable('reorder-table', filtered, (i) => {
+            const percent = i.min_stock > 0 ? ((i.available_stock / i.min_stock) * 100).toFixed(0) : 0;
+            const outOfStock = i.available_stock <= 0;
+            return `
+                <tr>
+                    <td>
+                        <div style="font-weight: 600;">${i.description}</div>
+                        <div style="font-size: 11px; color: #666;"><i class="fas fa-plane"></i> ${i.airline_name || 'All Airlines'}</div>
+                    </td>
+                    <td>${i.category || 'General'}</td>
+                    <td style="color: ${outOfStock ? '#e74c3c' : '#f39c12'}; font-weight: bold; font-size: 1.1rem;">${i.available_stock}</td>
+                    <td class="text-muted">${i.min_stock}</td>
+                    <td>
+                        <span class="badge" style="background: ${outOfStock ? '#ffeded' : '#fff9db'}; color: ${outOfStock ? '#e74c3c' : '#f39c12'}; padding: 4px 8px; border-radius: 4px; font-weight: 600;">
+                            ${outOfStock ? 'Out of Stock' : `Low (${percent}%)`}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }, 5);
+    } catch(err) {
+        console.error("Reorder levels load error", err);
+    }
 }
 
 window.initNavigation = initNavigation;
