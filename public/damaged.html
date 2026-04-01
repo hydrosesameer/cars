@@ -136,7 +136,7 @@
         if (!authCheck()) return;
         initNavigation();
         const dateInput = document.getElementById('dmg-date');
-        if (dateInput) dateInput.valueAsDate = new Date();
+        if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
         await loadDamagedItems();
         
         const bondSelect = document.getElementById('dmg-bond-select');
@@ -146,7 +146,6 @@
             });
         }
       });
-    </script>
     </script>
   </body>
 </html>
