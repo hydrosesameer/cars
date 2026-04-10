@@ -149,10 +149,35 @@ router.post('/', async (req, res) => {
         }
 
         const totalQty = items.reduce((sum, i) => sum + (parseInt(i.qty_dispatched) || 0), 0);
-        const totalValue = items.reduce((sum, i) => sum + ((parseFloat(i.value) || 0) * (parseInt(i.qty_dispatched) || 0)), 0);
-        const totalDuty = items.reduce((sum, i) => sum + ((parseFloat(i.duty) || 0) * (parseInt(i.qty_dispatched) || 0)), 0);
+        
+        // Items with calculated unit values
+        const processedItems = items.map(i => {
+            const qty = parseFloat(i.qty_dispatched) || 0;
+            let uv = parseFloat(i.value || 0); // User might pass unit value OR total value as 'value'
+            let ud = parseFloat(i.duty || 0);
+            
+            // Heuristic: If uv * qty is huge compared to typical value, or if they explicitly want to pass total
+            // Usually in this app, if they provide totals, they want the unit to be derived.
+            // Let's assume if qty > 1 and uv is provided as a total (which is what the user requested)
+            // But wait, the user's latest request says "automatically calculated unit value".
+            // Let's assume the passed 'value' and 'duty' are TOTALS if unit_value/unit_duty are not provided.
+            
+            let unitV = parseFloat(i.unit_value || 0);
+            let unitD = parseFloat(i.unit_duty || 0);
+            
+            if (uv > 0 && qty > 0 && unitV === 0) unitV = uv / qty;
+            else if (unitV > 0 && uv === 0) uv = unitV * qty;
 
-        const primaryInwardId = items.length > 0 ? items[0].inward_id : null;
+            if (ud > 0 && qty > 0 && unitD === 0) unitD = ud / qty;
+            else if (unitD > 0 && ud === 0) ud = unitD * qty;
+
+            return { ...i, unitV, unitD, totalV: uv, totalD: ud, qty };
+        });
+
+        const totalValue = processedItems.reduce((sum, i) => sum + i.totalV, 0);
+        const totalDuty = processedItems.reduce((sum, i) => sum + i.totalD, 0);
+
+        const primaryInwardId = processedItems.length > 0 ? processedItems[0].inward_id : null;
 
         const [result] = await connection.query(`
             INSERT INTO outward_entries (
@@ -168,11 +193,11 @@ router.post('/', async (req, res) => {
 
         const outwardId = result.insertId;
 
-        for (const item of items) {
+        for (const item of processedItems) {
             await connection.query(`
                 INSERT INTO outward_items (outward_id, inward_item_id, inward_id, item_id, description, qty_dispatched, value, duty)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `, [outwardId, item.inward_item_id, item.inward_id, item.item_id || null, item.description, item.qty_dispatched, item.value, item.duty]);
+            `, [outwardId, item.inward_item_id, item.inward_id, item.item_id || null, item.description, item.qty, item.unitV, item.unitD]);
         }
 
         await connection.commit();

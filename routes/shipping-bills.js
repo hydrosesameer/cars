@@ -129,6 +129,17 @@ router.post('/', async (req, res) => {
         const billId = result.insertId;
 
         for (const item of items) {
+            const qty = parseFloat(item.qty) || 0;
+            let uv = parseFloat(item.unit_value || 0);
+            let va = parseFloat(item.value_amount || 0);
+            if (va > 0 && qty > 0 && uv === 0) uv = va / qty;
+            else if (uv > 0 && va === 0) va = uv * qty;
+
+            let ud = parseFloat(item.unit_duty || 0);
+            let da = parseFloat(item.duty_amount || 0);
+            if (da > 0 && qty > 0 && ud === 0) ud = da / qty;
+            else if (ud > 0 && da === 0) da = ud * qty;
+
             await connection.query(`
                 INSERT INTO shipping_bill_items (
                     shipping_bill_id, inward_item_id, inward_id, item_id,
@@ -137,9 +148,8 @@ router.post('/', async (req, res) => {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 billId, item.inward_item_id, item.inward_id, item.item_id || null,
-                item.description, item.bond_no || null, item.bond_expiry || null, item.qty,
-                item.unit_value || 0, item.value_amount || 0,
-                item.unit_duty || 0, item.duty_amount || 0
+                item.description, item.bond_no || null, item.bond_expiry || null, qty,
+                uv, va, ud, da
             ]);
         }
 

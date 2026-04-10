@@ -115,7 +115,7 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     // Normalize fields
                     row.be_no = row['be number'] || row.be_no || row.be_num;
                     row.bond_no = row['bond number'] || row.bond_no;
-                    row.bond_date = parseDateInput(row['bond date'] || row.bond_date);
+                    row.bond_date = parseDateInput(row['bond date'] || row.bond_date || row['bond dt'] || row.bond_dt);
                     row.bond_expiry = parseDateInput(row['bond expiry'] || row.bond_expiry);
                     row.expiry_1 = parseDateInput(row['initial expiry 1'] || row.expiry_1);
                     row.expiry_2 = parseDateInput(row['initial expiry 2'] || row.expiry_2);
@@ -127,25 +127,41 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     row.consignment = row.consignment || row.consignee || row.supplier;
                     
                     row.qty = parseFloat(row.balance || row.qty || 0);
-                    row.unit_value = parseFloat(row['unit value'] || row.unit_value || 0);
-                    row.value = parseFloat(row.value || (row.unit_value * row.qty) || 0);
+                    
+                    // Value Handling: prioritize total value from CSV
+                    let totalValue = parseFloat(row['total value'] || row.total_value || row.value || 0);
+                    let unitValue = parseFloat(row['unit value'] || row.unit_value || 0);
+                    
+                    if (totalValue > 0 && row.qty > 0 && unitValue === 0) {
+                        unitValue = totalValue / row.qty;
+                    } else if (unitValue > 0 && totalValue === 0) {
+                        totalValue = unitValue * row.qty;
+                    }
+                    row.value = totalValue;
+                    row.unit_value = unitValue;
                     
                     // Duty calculation
                     let dutyRateStr = (row['duty rate'] || row['duty percent'] || row.duty_rate || row.duty_percent || '').toString();
                     let dutyRate = parseFloat(dutyRateStr.replace('%', '').trim()) || 0;
                     row.duty_rate = dutyRate > 0 ? dutyRate + '%' : dutyRateStr;
                     
-                    row.unit_duty = parseFloat(row['unit duty'] || row.unit_duty || 0);
+                    let totalDuty = parseFloat(row['total duty'] || row.total_duty || row.duty || 0);
+                    let unitDuty = parseFloat(row['unit duty'] || row.unit_duty || 0);
                     
-                    let dutyAmount = parseFloat(row.duty || 0);
-                    if (dutyAmount === 0) {
-                        if (row.unit_duty > 0) {
-                            dutyAmount = row.unit_duty * row.qty;
+                    if (totalDuty === 0) {
+                        if (unitDuty > 0) {
+                            totalDuty = unitDuty * row.qty;
                         } else if (dutyRate > 0) {
-                            dutyAmount = (row.value * dutyRate) / 100;
+                            totalDuty = (row.value * dutyRate) / 100;
                         }
                     }
-                    row.duty = dutyAmount;
+                    
+                    if (totalDuty > 0 && row.qty > 0 && unitDuty === 0) {
+                        unitDuty = totalDuty / row.qty;
+                    }
+                    
+                    row.duty = totalDuty;
+                    row.unit_duty = unitDuty;
 
                     // Check required fields
                     if (!row.bond_no || !row.bond_expiry || !row.description) {
@@ -224,14 +240,14 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                             INSERT INTO inward_items (
                                 inward_id, item_id, description, qty, unit, 
                                 value, duty, duty_percent, unit_value, unit_duty,
-                                bond_no, bond_expiry,
+                                bond_no, bond_date, bond_expiry,
                                 extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         `, [
                             inwardId, itemId, row.description, 
                             row.qty, row.unit || 'PCS',
                             row.value, row.duty, row.duty_rate, row.unit_value, row.unit_duty,
-                            row.bond_no, row.bond_expiry,
+                            row.bond_no, row.bond_date, row.bond_expiry,
                             row.expiry_1 || null, row.expiry_2 || null, row.expiry_3 || null
                         ]);
                     }
