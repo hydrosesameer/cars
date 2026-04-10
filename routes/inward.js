@@ -1,7 +1,19 @@
 const express = require('express');
 const router = express.Router();
 
-const toSqlDate = (d) => d ? String(d).split('T')[0] : null;
+const toSqlDate = (d) => {
+    if (!d) return null;
+    let s = String(d).trim();
+    if (s.includes('T')) s = s.split('T')[0];
+    if (s.includes('/')) {
+        const parts = s.split('/');
+        if (parts.length === 3) {
+            const [day, month, year] = parts;
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+    }
+    return s;
+};
 
 // Get all inward entries
 router.get('/', async (req, res) => {

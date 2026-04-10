@@ -81,6 +81,25 @@ router.post('/stock', upload.single('file'), async (req, res) => {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    const parseDateInput = (dateStr) => {
+        if (!dateStr || typeof dateStr !== 'string') return dateStr;
+        dateStr = dateStr.trim();
+        if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                const [d, m, y] = parts;
+                return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            }
+        } else if (dateStr.includes('-') && dateStr.split('-')[0].length !== 4) {
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                const [d, m, y] = parts;
+                return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            }
+        }
+        return dateStr;
+    };
+
     const results = [];
     fs.createReadStream(req.file.path)
         .pipe(csv())
@@ -90,23 +109,50 @@ router.post('/stock', upload.single('file'), async (req, res) => {
             await connection.beginTransaction();
 
             try {
-                // Group items by (date, consignment, bond_no)
+                // Group items by (date, consignment, bond_no) to create entry headers
                 const groups = {};
                 for (const row of results) {
                     // Normalize fields
+                    row.be_no = row['be number'] || row.be_no || row.be_num;
                     row.bond_no = row['bond number'] || row.bond_no;
-                    row.bond_expiry = row['bond expiry'] || row.bond_expiry;
-                    row.expiry_1 = row['initial expiry 1'] || row.expiry_1;
-                    row.expiry_2 = row['initial expiry 2'] || row.expiry_2;
-                    row.expiry_3 = row['initial expiry 3'] || row.expiry_3;
+                    row.bond_date = parseDateInput(row['bond date'] || row.bond_date);
+                    row.bond_expiry = parseDateInput(row['bond expiry'] || row.bond_expiry);
+                    row.expiry_1 = parseDateInput(row['initial expiry 1'] || row.expiry_1);
+                    row.expiry_2 = parseDateInput(row['initial expiry 2'] || row.expiry_2);
+                    row.expiry_3 = parseDateInput(row['initial expiry 3'] || row.expiry_3);
+                    row.be_date = parseDateInput(row['be date'] || row.be_date || row.date);
                     row.min_stock = row['min stock'] || row.min_stock;
+                    row.flight_no = row['flight no'] || row.flight_no || row.flight;
+                    row.awb_no = row['awb no'] || row.awb_no || row.awb;
+                    row.consignment = row.consignment || row.consignee || row.supplier;
+                    
+                    row.qty = parseFloat(row.balance || row.qty || 0);
+                    row.unit_value = parseFloat(row['unit value'] || row.unit_value || 0);
+                    row.value = parseFloat(row.value || (row.unit_value * row.qty) || 0);
+                    
+                    // Duty calculation
+                    let dutyRateStr = (row['duty rate'] || row['duty percent'] || row.duty_rate || row.duty_percent || '').toString();
+                    let dutyRate = parseFloat(dutyRateStr.replace('%', '').trim()) || 0;
+                    row.duty_rate = dutyRate > 0 ? dutyRate + '%' : dutyRateStr;
+                    
+                    row.unit_duty = parseFloat(row['unit duty'] || row.unit_duty || 0);
+                    
+                    let dutyAmount = parseFloat(row.duty || 0);
+                    if (dutyAmount === 0) {
+                        if (row.unit_duty > 0) {
+                            dutyAmount = row.unit_duty * row.qty;
+                        } else if (dutyRate > 0) {
+                            dutyAmount = (row.value * dutyRate) / 100;
+                        }
+                    }
+                    row.duty = dutyAmount;
 
                     // Check required fields
-                    if (!row.bond_no || !row.bond_expiry || !row.description || !row.min_stock) {
-                        continue; // Skip invalid rows or handle error
+                    if (!row.bond_no || !row.bond_expiry || !row.description) {
+                        continue; 
                     }
 
-                    const key = `${row.date || ''}_${row.consignment || ''}_${row.bond_no}`;
+                    const key = `${row.be_date || ''}_${row.consignment || ''}_${row.bond_no}`;
                     if (!groups[key]) groups[key] = [];
                     groups[key].push(row);
                 }
@@ -127,22 +173,31 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                         }
                     }
 
+                    // Calculate Header Totals
+                    const totalQty = groupRows.reduce((sum, r) => sum + (parseFloat(r.qty) || 0), 0);
+                    const totalValue = groupRows.reduce((sum, r) => sum + (parseFloat(r.value) || 0), 0);
+                    const totalDuty = groupRows.reduce((sum, r) => sum + (parseFloat(r.duty) || 0), 0);
+                    const headerDutyRate = firstRow.duty_rate || null;
+
                     // 2. Create one inward entry (Header) for this group
-                    const dateOfReceipt = firstRow.date || new Date().toISOString().split('T')[0];
+                    const dateOfReceipt = firstRow.be_date || new Date().toISOString().split('T')[0];
                     const [entryResult] = await connection.query(`
                         INSERT INTO inward_entries (
                             be_no, be_date, bond_no, bond_date, date_of_receipt, 
                             consignment_id, branch_id, mode_of_receipt, warehouse_code,
-                            qty_received, initial_bonding_expiry,
-                            extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            qty_received, value, duty, duty_rate,
+                            initial_bonding_expiry,
+                            extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3,
+                            flight_no, awb_no
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `, [
-                        'BULK-' + Date.now(), dateOfReceipt, 
+                        firstRow.be_no || ('BULK-' + Date.now()), dateOfReceipt, 
                         firstRow.bond_no, firstRow.bond_date || dateOfReceipt,
                         dateOfReceipt, consignmentId, branch_id || null, 'BULK UPLOAD', 'Cok15003',
-                        groupRows.reduce((sum, r) => sum + (parseInt(r.balance || r.qty) || 0), 0),
+                        totalQty, totalValue, totalDuty, headerDutyRate,
                         firstRow.bond_expiry,
-                        firstRow.expiry_1 || null, firstRow.expiry_2 || null, firstRow.expiry_3 || null
+                        firstRow.expiry_1 || null, firstRow.expiry_2 || null, firstRow.expiry_3 || null,
+                        firstRow.flight_no || null, firstRow.awb_no || null
                     ]);
 
                     const inwardId = entryResult.insertId;
@@ -153,7 +208,7 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                         let itemId = null;
                         const [items] = await connection.query('SELECT id FROM items WHERE description = ?', [row.description.trim()]);
                         
-                        const hsn_code = row.code || row.hsn_code || null;
+                        const hsn_code = row.code || row.hsn_code || row.hsn || null;
                         const min_stock = parseInt(row.min_stock) || 0;
 
                         if (items.length > 0) {
@@ -168,13 +223,14 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                         await connection.query(`
                             INSERT INTO inward_items (
                                 inward_id, item_id, description, qty, unit, 
-                                value, duty, bond_no, bond_expiry,
+                                value, duty, duty_percent, unit_value, unit_duty,
+                                bond_no, bond_expiry,
                                 extended_bonding_expiry1, extended_bonding_expiry2, extended_bonding_expiry3
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         `, [
                             inwardId, itemId, row.description, 
-                            row.balance || row.qty || 0, row.unit || 'PCS',
-                            row.value || 0, row.duty || 0,
+                            row.qty, row.unit || 'PCS',
+                            row.value, row.duty, row.duty_rate, row.unit_value, row.unit_duty,
                             row.bond_no, row.bond_expiry,
                             row.expiry_1 || null, row.expiry_2 || null, row.expiry_3 || null
                         ]);
