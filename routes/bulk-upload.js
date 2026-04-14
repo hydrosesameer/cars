@@ -138,9 +138,9 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     row.unit_value = unitValue;
                     
                     // Duty calculation
-                    let dutyRateStr = (row['duty rate'] || row['duty percent'] || row.duty_rate || row.duty_percent || '').toString();
+                    let dutyRateStr = (row['duty rate'] || row['duty percent'] || row.duty_rate || row.duty_percent || '').toString().trim();
                     let dutyRate = parseFloat(dutyRateStr.replace('%', '').trim()) || 0;
-                    row.duty_rate = dutyRate > 0 ? dutyRate + '%' : dutyRateStr;
+                    row.duty_rate = dutyRateStr; // Keep the original string (e.g., '150%+10%')
                     
                     let totalDuty = parseFloat(row['total duty'] || row.total_duty || row['unit duty'] || row.unit_duty || row.duty || 0);
                     let unitDuty = (totalDuty > 0 && row.qty > 0) ? (totalDuty / row.qty) : 0;

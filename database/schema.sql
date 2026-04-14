@@ -83,7 +83,7 @@ CREATE TABLE `inward_entries` (
   `extended_bonding_expiry3` date DEFAULT NULL,
   `bank_guarantee` text DEFAULT NULL,
   `relinquishment` tinyint(1) DEFAULT 0,
-  `duty_rate` decimal(15,4) DEFAULT NULL,
+  `duty_rate` varchar(255) DEFAULT NULL,
   `value_rate` decimal(15,4) DEFAULT NULL,
   `value` decimal(15,2) DEFAULT NULL,
   `duty` decimal(15,2) DEFAULT NULL,
