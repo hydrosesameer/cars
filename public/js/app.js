@@ -2750,11 +2750,14 @@ async function initShippingBillEntry() {
         const defaultPort = selected ? selected.getAttribute('data-port') : '';
         
         const user = getAuthUser();
-        const airportCode = user.airport_code;
+        const airportCode = user.airport_code || 'COK'; // Fallback
+        
+        // Use port_of_discharge from country master if available (e.g. KWT), else use country code (e.g. KW)
+        const destCode = defaultPort || countryCode;
 
-        if (airportCode && countryCode) {
-          // Format as COK-SA-COK
-          document.getElementById('sb-port').value = `${airportCode}-${countryCode}-${airportCode}`;
+        if (airportCode && destCode) {
+          // Format as COK-KWT-COK
+          document.getElementById('sb-port').value = `${airportCode}-${destCode}-${airportCode}`;
         } else if (defaultPort) {
           document.getElementById('sb-port').value = defaultPort;
         }
@@ -2853,7 +2856,11 @@ async function initShippingBillEntry() {
   } else {
     // New Mode
     currentShippingBillId = null;
+    const user = getAuthUser();
     document.getElementById("sb-date").value = new Date().toISOString().split("T")[0];
+    if (user && user.branch_name) {
+      document.getElementById("sb-station").value = user.branch_name;
+    }
     sbAvailableItems = [];
     sbSelectedItems = [{ inward_item_id: null, description: "", qty: "", available_qty: "", bond_expiry: "", bond_no: "", unit_value: "", value_amount: 0, unit_duty: "", duty_amount: 0 }];
   }
@@ -3660,7 +3667,7 @@ async function printShippingBill(id) {
     </div>
 
     <!-- ===== STATION ===== -->
-    <div class="station-line">STATION: ${bill.station || 'COCHIN'}</div>
+    <div class="station-line">STATION: ${bill.branch_name || bill.station || 'COCHIN'}</div>
 
     <!-- ===== AIRCRAFT / ROUTE HEADER ===== -->
     <table class="aircraft-header">
@@ -3730,7 +3737,7 @@ async function printShippingBill(id) {
         <div class="decl-left">
           <p>The goods covered by this shipping bill are shipped direct from the
           private bond of M/S. CASINO AIR CATERERS & FLIGHT SERVICES
-          situated at ${bill.shipping_place || 'NAVATHOSE'} per VT ............ under my escort and
+          situated at ${bill.shipping_place || 'NAYATHODE'} per VT ............ under my escort and
           Supervision.</p>
           <div style="margin-top: 49px;">
         
@@ -5064,7 +5071,7 @@ async function saveInwardPage() {
   if (!data.be_date) missingFields.push("BE Date");
   if (!data.date_of_receipt) missingFields.push("Receipt Date");
   if (!data.consignment_id) missingFields.push("Airline/Consignment");
-  if (transportMode === 'AIRLINE' && !data.flight_no) missingFields.push("Flight No");
+  // Flight No is now optional
   if (transportMode === 'ROAD' && !data.transport_reg_no) missingFields.push("Transport Registration No");
   if (transportMode === 'SHIP' && !data.transport_reg_no) missingFields.push("Ship Selection");
   
@@ -5806,7 +5813,7 @@ function openBranchModal(branch = null) {
             </div>
             <div class="form-group">
                 <label class="form-label">Shipping Place</label>
-                <input type="text" class="form-control" id="branch-shipping-place" value="${branch?.shipping_place || ""}" placeholder="e.g. SEZ">
+                <input type="text" class="form-control" id="branch-shipping-place" value="${branch?.shipping_place || ""}" placeholder="e.g. NAYATHODE">
             </div>
             <div class="form-group" style="grid-column: span 2">
                 <label class="form-label">Address</label>

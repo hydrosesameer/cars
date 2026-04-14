@@ -8,7 +8,7 @@ router.post('/login', async (req, res) => {
     const db = req.app.locals.db;
 
     try {
-        const [users] = await db.query('SELECT u.*, b.name as branch_name, b.code as branch_code, b.airport_code FROM users u LEFT JOIN branches b ON u.branch_id = b.id WHERE u.username = ? AND u.status = "ACTIVE"', [username]);
+        const [users] = await db.query('SELECT u.*, b.name as branch_name, b.code as branch_code, b.airport_code, b.shipping_place FROM users u LEFT JOIN branches b ON u.branch_id = b.id WHERE u.username = ? AND u.status = "ACTIVE"', [username]);
         
         if (users.length === 0) {
             return res.status(401).json({ error: 'Invalid username or password' });
@@ -32,7 +32,8 @@ router.post('/login', async (req, res) => {
                 branch_id: user.branch_id,
                 branch_name: user.branch_name,
                 branch_code: user.branch_code,
-                airport_code: user.airport_code
+                airport_code: user.airport_code,
+                shipping_place: user.shipping_place
             }
         });
     } catch (err) {
@@ -64,7 +65,7 @@ router.post('/auto-login', async (req, res) => {
     const db = req.app.locals.db;
     try {
         const [users] = await db.query(`
-            SELECT u.*, b.name as branch_name, b.code as branch_code, b.airport_code 
+            SELECT u.*, b.name as branch_name, b.code as branch_code, b.airport_code, b.shipping_place 
             FROM users u 
             LEFT JOIN branches b ON u.branch_id = b.id 
             WHERE u.id = ? AND u.status = 'ACTIVE'`, [userId]);
@@ -83,7 +84,8 @@ router.post('/auto-login', async (req, res) => {
                 branch_id: user.branch_id,
                 branch_name: user.branch_name,
                 branch_code: user.branch_code,
-                airport_code: user.airport_code
+                airport_code: user.airport_code,
+                shipping_place: user.shipping_place
             } 
         });
     } catch (err) {

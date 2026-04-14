@@ -34,9 +34,9 @@ router.get('/', async (req, res) => {
 
         // 3. Search Items (Description, Code)
         const [itemRows] = await db.query(`
-            SELECT id, 'ITEM' as type, description as title, CONCAT('Code: ', IFNULL(code, 'N/A'), ' | Unit: ', unit) as subtitle, 'items.html' as url
+            SELECT id, 'ITEM' as type, description as title, CONCAT('HSN: ', IFNULL(hsn_code, 'N/A'), ' | Unit: ', unit) as subtitle, 'items.html' as url
             FROM items
-            WHERE (description LIKE ? OR code LIKE ?)
+            WHERE (description LIKE ? OR hsn_code LIKE ?)
             LIMIT 5
         `, [searchTerm, searchTerm]);
 

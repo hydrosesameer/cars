@@ -118,8 +118,8 @@ router.post('/', async (req, res) => {
         `, [
             sb_no, sb_date, consignment_id || null, flight_no || null,
             etd || null, vt || null,
-            port_of_discharge || 'COK/KWI/COK', country_of_destination || 'KWI',
-            station || 'COCHIN',
+            port_of_discharge || null, country_of_destination || null,
+            station || null,
             exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
             exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
             entered_no || null,
@@ -191,8 +191,8 @@ router.put('/:id', async (req, res) => {
         `, [
             sb_no, sb_date, consignment_id || null, flight_no || null,
             etd || null, vt || null,
-            port_of_discharge || 'COK/KWI/COK', country_of_destination || 'KWI',
-            station || 'COCHIN',
+            port_of_discharge || null, country_of_destination || null,
+            station || null,
             exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
             exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
             entered_no || null,

@@ -48,7 +48,8 @@ router.get('/available/items', async (req, res) => {
             JOIN inward_entries ie ON ii.inward_id = ie.id
             WHERE (ii.qty - COALESCE((SELECT SUM(oi.qty_dispatched - oi.qty_returned_bag) FROM outward_items oi WHERE oi.inward_item_id = ii.id), 0) - COALESCE((SELECT SUM(di.qty_damaged) FROM damaged_items di WHERE di.inward_item_id = ii.id), 0) + COALESCE((SELECT SUM(rse.qty_returned) FROM return_stock_entries rse WHERE rse.inward_item_id = ii.id), 0)) > 0
               AND ii.extension_status != 'APPLIED'
-              AND DATEDIFF(COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry), CURDATE()) >= 0
+              AND (COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry) IS NULL 
+                   OR DATEDIFF(COALESCE(ii.bond_expiry, ie.extended_bonding_expiry3, ie.extended_bonding_expiry2, ie.extended_bonding_expiry1, ie.initial_bonding_expiry), CURDATE()) >= 0)
         `;
         const params = [];
         if (consignment_id) {
