@@ -5995,13 +5995,13 @@ async function handleBulkStockUpload(input) {
 
 function downloadSampleCSV() {
   const headers = [
-    'bond number', 'bond expiry', 'description', 'min_stock', 'balance', 'code', 
+    'bond number', 'bond date', 'bond expiry', 'description', 'min_stock', 'balance', 'code', 
     'unit value', 'unit duty', 'duty rate',
     'initial expiry 1', 'initial expiry 2', 'initial expiry 3', 'date', 'consignment'
   ];
   const sampleData = [
-    ['BOND-TEST-001', '2027-03-28', 'WHISKY 750ML', '10', '100', '220830', '15.50', '25.00', '15+15+15', '2027-06-28', '', '', '2026-03-28', 'AIR INDIA'],
-    ['BOND-TEST-002', '2027-03-28', 'CIGARETTES CARTON', '5', '50', '240220', '8.00', '12.00', '100%', '', '', '', '2026-03-28', 'EMIRATES']
+    ['BOND-TEST-001', '2026-03-28', '2027-03-28', 'WHISKY 750ML', '10', '100', '220830', '15.50', '25.00', '15+15+15', '2027-06-28', '', '', '2026-03-28', 'AIR INDIA'],
+    ['BOND-TEST-002', '2026-03-28', '2027-03-28', 'CIGARETTES CARTON', '5', '50', '240220', '8.00', '12.00', '100%', '', '', '', '2026-03-28', 'EMIRATES']
   ];
   
   let csvContent = headers.join(',') + '\n' + sampleData.map(row => row.join(',')).join('\n');

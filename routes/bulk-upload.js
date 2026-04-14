@@ -115,7 +115,7 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     // Normalize fields
                     row.be_no = row['be number'] || row.be_no || row.be_num;
                     row.bond_no = row['bond number'] || row.bond_no;
-                    row.bond_date = parseDateInput(row['bond date'] || row.bond_date || row['bond dt'] || row.bond_dt);
+                    row.bond_date = parseDateInput(row['bond date'] || row.bond_date || row['bond dt'] || row.bond_dt || row.date);
                     row.bond_expiry = parseDateInput(row['bond expiry'] || row.bond_expiry);
                     row.expiry_1 = parseDateInput(row['initial expiry 1'] || row.expiry_1);
                     row.expiry_2 = parseDateInput(row['initial expiry 2'] || row.expiry_2);
@@ -128,15 +128,10 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     
                     row.qty = parseFloat(row.balance || row.qty || 0);
                     
-                    // Value Handling: prioritize total value from CSV
-                    let totalValue = parseFloat(row['total value'] || row.total_value || row.value || 0);
-                    let unitValue = parseFloat(row['unit value'] || row.unit_value || 0);
+                    // Value Handling: The user clarified that 'unit value' and 'unit duty' headers in their CSV are actually TOTALS.
+                    let totalValue = parseFloat(row['total value'] || row.total_value || row['unit value'] || row.unit_value || row.value || 0);
+                    let unitValue = (totalValue > 0 && row.qty > 0) ? (totalValue / row.qty) : 0;
                     
-                    if (totalValue > 0 && row.qty > 0 && unitValue === 0) {
-                        unitValue = totalValue / row.qty;
-                    } else if (unitValue > 0 && totalValue === 0) {
-                        totalValue = unitValue * row.qty;
-                    }
                     row.value = totalValue;
                     row.unit_value = unitValue;
                     
@@ -145,18 +140,11 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     let dutyRate = parseFloat(dutyRateStr.replace('%', '').trim()) || 0;
                     row.duty_rate = dutyRate > 0 ? dutyRate + '%' : dutyRateStr;
                     
-                    let totalDuty = parseFloat(row['total duty'] || row.total_duty || row.duty || 0);
-                    let unitDuty = parseFloat(row['unit duty'] || row.unit_duty || 0);
+                    let totalDuty = parseFloat(row['total duty'] || row.total_duty || row['unit duty'] || row.unit_duty || row.duty || 0);
+                    let unitDuty = (totalDuty > 0 && row.qty > 0) ? (totalDuty / row.qty) : 0;
                     
-                    if (totalDuty === 0) {
-                        if (unitDuty > 0) {
-                            totalDuty = unitDuty * row.qty;
-                        } else if (dutyRate > 0) {
-                            totalDuty = (row.value * dutyRate) / 100;
-                        }
-                    }
-                    
-                    if (totalDuty > 0 && row.qty > 0 && unitDuty === 0) {
+                    if (totalDuty === 0 && dutyRate > 0) {
+                        totalDuty = (row.value * dutyRate) / 100;
                         unitDuty = totalDuty / row.qty;
                     }
                     
