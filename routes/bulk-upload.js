@@ -132,6 +132,8 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     let totalValue = parseFloat(row['total value'] || row.total_value || row['unit value'] || row.unit_value || row.value || 0);
                     let unitValue = (totalValue > 0 && row.qty > 0) ? (totalValue / row.qty) : 0;
                     
+                    console.log(`Row: ${row.description}, Qty: ${row.qty}, TotalValue: ${totalValue}, UnitValue: ${unitValue}`);
+
                     row.value = totalValue;
                     row.unit_value = unitValue;
                     
@@ -143,6 +145,8 @@ router.post('/stock', upload.single('file'), async (req, res) => {
                     let totalDuty = parseFloat(row['total duty'] || row.total_duty || row['unit duty'] || row.unit_duty || row.duty || 0);
                     let unitDuty = (totalDuty > 0 && row.qty > 0) ? (totalDuty / row.qty) : 0;
                     
+                    console.log(`Row: ${row.description}, TotalDuty: ${totalDuty}, UnitDuty: ${unitDuty}`);
+
                     if (totalDuty === 0 && dutyRate > 0) {
                         totalDuty = (row.value * dutyRate) / 100;
                         unitDuty = totalDuty / row.qty;
