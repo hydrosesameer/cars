@@ -3562,11 +3562,11 @@ async function printShippingBill(id) {
           <td>${bondNoToDisplay}</td>
           <td>${fmtDate(it.bond_expiry) || ''}</td>
           <td>${it.description || ''}</td>
-          <td class="r" style="font-weight:bold;">${it.qty}</td>
-          <td class="r">${parseFloat(it.unit_value || 0).toFixed(2)}</td>
-          <td class="r" style="font-weight:bold;">${parseFloat(it.value_amount || 0).toFixed(2)}</td>
-          <td class="r">${parseFloat(it.unit_duty || 0).toFixed(2)}</td>
-          <td class="r" style="font-weight:bold;">${parseFloat(it.duty_amount || 0).toFixed(2)}</td>
+          <td class="c" style="font-weight:bold;">${it.qty}</td>
+          <td class="c">${parseFloat(it.unit_value || 0).toFixed(2)}</td>
+          <td class="c" style="font-weight:bold;">${parseFloat(it.value_amount || 0).toFixed(2)}</td>
+          <td class="c">${parseFloat(it.unit_duty || 0).toFixed(2)}</td>
+          <td class="c" style="font-weight:bold;">${parseFloat(it.duty_amount || 0).toFixed(2)}</td>
         </tr>`;
       } else {
         itemRows += `<tr>
@@ -3706,14 +3706,14 @@ async function printShippingBill(id) {
       <thead>
         <tr>
           <th style="width:4%">S.No.</th>
-          <th style="width:12%">Bond No.</th>
-          <th style="width:10%">Expiry date</th>
-          <th style="width:30%">Detailed Description of Goods&ensp;Distinguishing<br>Size,Type,Brand etc.</th>
-          <th style="width:6%">QTY.</th>
-          <th style="width:10%">Unit<br>Value</th>
-          <th style="width:10%">Value<br>Amount</th>
-          <th style="width:9%">Unit<br>Duty</th>
-          <th style="width:10%">Duty<br>Amount</th>
+          <th style="width:11%">Bond No.</th>
+          <th style="width:9%">Expiry date</th>
+          <th style="width:37%">Detailed Description of Goods&ensp;Distinguishing<br>Size,Type,Brand etc.</th>
+          <th style="width:5%">QTY.</th>
+          <th style="width:9%">Unit<br>Value</th>
+          <th style="width:9%">Value<br>Amount</th>
+          <th style="width:8%">Unit<br>Duty</th>
+          <th style="width:8%">Duty<br>Amount</th>
         </tr>
       </thead>
       <tbody>
