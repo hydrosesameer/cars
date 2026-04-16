@@ -2140,7 +2140,7 @@ async function generateFormA() {
                 }
             </style>
             <div class="card">
-                <div class="card-header text-center" style="display: block !important; text-align: center !important; font-family: 'Arial Narrow', sans-serif; border-bottom: none; padding-bottom: 5px;">
+                <div class="card-header text-center" style="display: block !important; text-align: center !important; font-family: 'Calibri', sans-serif; border-bottom: none; padding-bottom: 5px;">
                     <h5 style="font-weight: bold; margin-bottom: 0; text-align: center;">${reportTitle}</h5>
                     <p style="margin-bottom: 0; font-size: 12px; text-align: center;">Form to be maintained by the warehouse licensee of the receipt, handling, storing and removal of the warehoused goods</p>
                     <p style="margin-bottom: 0; font-size: 12px; text-align: center;">(in terms of Circular No. 25/2016-Customs dated 08.06.2016)</p>
@@ -2149,7 +2149,7 @@ async function generateFormA() {
                 </div>
                 <div class="card-body" style="padding: 0; overflow: visible;">
                     <table class="table table-bordered table-sm report-table text-center" style="font-size: 6px; width: 100%; table-layout: auto;">
-                        <thead style="font-stretch: condensed; font-family: 'Arial Narrow', sans-serif;">
+                        <thead style="font-stretch: condensed; font-family: 'Calibri', sans-serif;">
                             <tr>
                                 <th colspan="11" class="text-center" style="font-weight: bold; text-transform: uppercase;">RECEIPTS</th>
                                 <th colspan="11" class="text-center" style="font-weight: bold; text-transform: uppercase;">HANDLING AND STORAGE</th>
@@ -2383,7 +2383,7 @@ async function generateFormB() {
                 .form-b-table {
                     width: 100%;
                     border-collapse: collapse;
-                    font-family: "Times New Roman", Times, serif;
+                    font-family: 'Calibri', sans-serif;
                 }
                 @media print {
                     @page { size: A3 landscape; margin: 5mm; }
@@ -2414,7 +2414,7 @@ async function generateFormB() {
                     }
                 }
             </style>
-            <div style="width: 100%; font-family: 'Times New Roman', Times, serif; color: black; background: white; padding: 10px;">
+            <div style="width: 100%; font-family: 'Calibri', sans-serif; color: black; background: white; padding: 10px;">
                 <div style="text-align: center; margin-bottom: 5px;">
                     <h4 style="font-weight: bold; margin-bottom: 5px;">FORM-B FOR THE MONTH OF ${monthLabel} ${data.year}</h4>
                 </div>
@@ -2572,7 +2572,7 @@ async function printExternalTransferAnnexure(outwardId) {
 
     let html = `
       <style>
-        .annexure-print { font-family: 'Arial', sans-serif; padding: 10px 20px; color: #000; width: 1050px; margin: 0 auto; background: #fff; }
+        .annexure-print { font-family: 'Calibri', sans-serif; padding: 10px 20px; color: #000; width: 1050px; margin: 0 auto; background: #fff; }
         .annexure-header { text-align: center; position: relative; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 5px; }
         .annexure-header h1 { margin: 0; font-size: 16px; text-decoration: underline; text-transform: uppercase; letter-spacing: 2px; }
         .annexure-header h2 { margin: 5px 0 0 0; font-size: 13px; font-weight: normal; }
@@ -3582,7 +3582,7 @@ async function printShippingBill(id) {
     <title>Shipping Bill - ${bill.sb_no}</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Times New Roman', serif; font-size: 13px; font-weight: 600; padding: 15px; line-height: 1.3; color: #000; }
+      body { font-family: 'Calibri', sans-serif; font-size: 13px; padding: 15px; line-height: 1.3; color: #000; }
 
       /* --- Top 3-column header --- */
       .top-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; position: relative; }
@@ -3670,9 +3670,9 @@ async function printShippingBill(id) {
         <div class="title-right">DUTY FREE GOODS</div>
         <table>
           <tr><td style="width: 75px;">FLT. NO.</td><td style="width: 10px;">:</td><td><span style="font-weight:bold; font-size:16px;">${bill.flight_no || ''}</span></td></tr>
-          <tr><td>DATE</td><td>:</td><td>${fmtDate(bill.sb_date)}</td></tr>
-          <tr><td>ETD</td><td>:</td><td>${bill.etd || ''}</td></tr>
-          <tr><td>VT</td><td>:</td><td>${bill.vt || ''}</td></tr>
+          <tr><td>DATE</td><td>:</td><td><b>${fmtDate(bill.sb_date)}</b></td></tr>
+          <tr><td>ETD</td><td>:</td><td><b>${bill.etd || ''}</b></td></tr>
+          <tr><td>VT</td><td>:</td><td><b>${bill.vt || ''}</b></td></tr>
         </table>
       </div>
     </div>
@@ -3724,7 +3724,7 @@ async function printShippingBill(id) {
     <!-- ===== ENTERED NO ===== -->
     <div class="entered-section">
       <div class="entered-left">
-        <b>Entered No:</b>&emsp;${bill.sb_no || '___________'}&emsp;&emsp;${fmtDate(bill.entered_date) || fmtDate(bill.sb_date)}
+        <b>Entered No:</b>&emsp;<b>${bill.sb_no || '___________'}</b>&emsp;&emsp;<b>${fmtDate(bill.entered_date) || fmtDate(bill.sb_date)}</b>
       </div>
       <div class="entered-right">
         Permitted free of duty under Section 87 of the New<br>
@@ -3738,46 +3738,48 @@ async function printShippingBill(id) {
         <div class="decl-left">
           <p style="font-weight: bold;">Particulars declared in this shipping bill are checked and found
           Correct</p>
-          <div style="margin-top: 80px;">
-           
-            <div class="officer-title">Inspector of Customs</div>
-          </div>
         </div>
         <div class="decl-right">
-          <div style="margin-top: 90px;">
-           
-            <div class="officer-title">For ASSISTANT COMMISSIONER OF CUSTOMS</div>
-          </div>
+        </div>
+      </div>
+      <div class="decl-block" style="margin-top: 80px;">
+        <div class="decl-left" style="text-align: center;">
+          <div class="officer-title">Inspector of Customs</div>
+        </div>
+        <div class="decl-right" style="text-align: center;">
+          <div class="officer-title">For ASSISTANT COMMISSIONER OF CUSTOMS</div>
         </div>
       </div>
 
-      <div class="decl-block">
+      <div class="decl-block" style="margin-top: 30px;">
         <div class="decl-left">
           <p>The goods covered by this shipping bill are shipped direct from the
           private bond of M/S. CASINO AIR CATERERS & FLIGHT SERVICES
           situated at ${bill.shipping_place || 'NAYATHODE'} per VT ............ under my escort and
           Supervision.</p>
-          <div style="margin-top: 49px;">
-        
-            <div class="officer-title"><b>Inspector of Customs</b></div>
-          </div>
         </div>
         <div class="decl-right">
           <p>We hereby declare that the particulars given above to be true. We also apply
           for permission to clear the shipment, the goods mentioned herein from the
           CASINO AIR CATERERS AND FLIGHT SERVICES, being a Special Warehouse
           Licensee appointed under New Customs Act, 1962.</p>
-          <div style="margin-top: 36px;">
-           
-            <div class="officer-title">For CASINO AIR CATERERS & FLIGHT SERVICES</div>
-          </div>
         </div>
       </div>
-
-      <!-- Contents received on board -->
-      <div style="margin-left: 25%; text-align: center; margin-top: 40px; font-size: 11px;">
-        <div>Contents Received on Board</div>
-        <div><b>Aircraft Commander</b></div>
+      <div class="decl-block" style="margin-top: 70px;">
+        <div class="decl-left" style="text-align: center;">
+          <div class="officer-title"><b>Inspector of Customs</b></div>
+        </div>
+        <div class="decl-right" style="text-align: center;">
+          <div class="officer-title">For CASINO AIR CATERERS & FLIGHT SERVICES</div>
+          
+          <!-- Contents received on board -->
+          <div style="margin-top: 50px; font-size: 11px;">
+            <table style="margin: 0 auto; border-collapse: collapse; text-align: center; width: 220px;">
+              <tr><td style="border: none; padding: 4px;">Contents Received on Board</td></tr>
+              <tr><td style="border: none; padding: 4px;"><b>Aircraft Commander</b></td></tr>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -5501,7 +5503,7 @@ function downloadFormAPDF() {
   showToast('Generating PDF... Please wait.', 'info');
 
   const htmlContent = `
-    <div style="width: 1580px; min-width: 1580px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1580px; min-width: 1580px; margin: 0; padding: 0; background: white; font-family: 'Calibri', sans-serif;">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         .card { border: none !important; margin: 0 !important; padding: 0 !important; width: 1580px !important; }
@@ -5553,7 +5555,7 @@ function downloadFormBPDF() {
   // Use a full-width wrapper (1580px) and BAKE the margins in with padding.
   // This is much more reliable than jsPDF margins for alignment.
   const htmlContent = `
-    <div style="width: 1580px; min-width: 1580px; margin: 0; padding: 40px 60px; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1580px; min-width: 1580px; margin: 0; padding: 40px 60px; background: white; font-family: 'Calibri', sans-serif;">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         .table, .form-b-table { width: 1460px !important; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
@@ -5601,7 +5603,7 @@ function downloadStockPDF() {
   showToast('Generating PDF... Please wait.', 'info');
 
   const htmlContent = `
-    <div style="width: 1100px; margin: 0; padding: 0; background: white; font-family: 'Inter', Arial, sans-serif;">
+    <div style="width: 1100px; margin: 0; padding: 0; background: white; font-family: 'Calibri', sans-serif;">
       <style>
         .table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
         .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px; }
