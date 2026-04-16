@@ -2767,15 +2767,20 @@ async function initShippingBillEntry() {
 
   // Helper to populate flight dropdown for a given airline
   async function populateFlights(consignment_id, selectedFlight) {
-    const flightSelect = document.getElementById('sb-flight');
-    if (!flightSelect) return;
-    flightSelect.innerHTML = '<option value="">Select Flight</option>';
+    const flightInput = document.getElementById('sb-flight');
+    const flightDatalist = document.getElementById('sb-flight-options');
+    if (!flightInput || !flightDatalist) return;
+    
+    flightDatalist.innerHTML = '';
+    flightInput.value = selectedFlight || "";
+    
     if (!consignment_id) return;
     try {
       const flights = await apiCall(`/consignments/flights/list?consignment_id=${consignment_id}`);
-      flightSelect.innerHTML = '<option value="">Select Flight</option>' +
-        flights.map(f => `<option value="${f.flight_no}" ${f.flight_no === selectedFlight ? 'selected' : ''}>${f.flight_no}</option>`).join('');
-    } catch (err) { console.log('Flights load:', err.message); }
+      flightDatalist.innerHTML = Object.values(flights).map(f => `<option value="${f.flight_no}">`).join('');
+    } catch (err) { 
+      console.log('Flights load:', err.message); 
+    }
   }
 
   // Listen to Consignment Change to dynamically fetch stock + flights
@@ -2790,7 +2795,7 @@ async function initShippingBillEntry() {
           await populateFlights(consignment_id, null);
       } else {
           sbAvailableItems = [];
-          document.getElementById('sb-flight').innerHTML = '<option value="">Select Flight</option>';
+          await populateFlights(null, null);
       }
       // Reset selected items when airline changes
       if (!currentShippingBillId) {
@@ -3548,16 +3553,20 @@ async function printShippingBill(id) {
     for (let i = 0; i < 25; i++) {
       if (i < items.length) {
         const it = items[i];
+        let bondNoToDisplay = it.bond_no || '';
+        if (bondNoToDisplay.length > 5) {
+          bondNoToDisplay = bondNoToDisplay.substring(5);
+        }
         itemRows += `<tr>
           <td class="c">${i + 1}</td>
-          <td>${it.bond_no || ''}</td>
+          <td>${bondNoToDisplay}</td>
           <td>${fmtDate(it.bond_expiry) || ''}</td>
           <td>${it.description || ''}</td>
-          <td class="r">${it.qty}</td>
+          <td class="r" style="font-weight:bold;">${it.qty}</td>
           <td class="r">${parseFloat(it.unit_value || 0).toFixed(2)}</td>
-          <td class="r">${parseFloat(it.value_amount || 0).toFixed(2)}</td>
+          <td class="r" style="font-weight:bold;">${parseFloat(it.value_amount || 0).toFixed(2)}</td>
           <td class="r">${parseFloat(it.unit_duty || 0).toFixed(2)}</td>
-          <td class="r">${parseFloat(it.duty_amount || 0).toFixed(2)}</td>
+          <td class="r" style="font-weight:bold;">${parseFloat(it.duty_amount || 0).toFixed(2)}</td>
         </tr>`;
       } else {
         itemRows += `<tr>
@@ -3573,64 +3582,64 @@ async function printShippingBill(id) {
     <title>Shipping Bill - ${bill.sb_no}</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Times New Roman', serif; font-size: 11px; padding: 15px; line-height: 1.3; color: #000; }
+      body { font-family: 'Times New Roman', serif; font-size: 13px; font-weight: 600; padding: 15px; line-height: 1.3; color: #000; }
 
       /* --- Top 3-column header --- */
-      .top-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-      .top-left { font-size: 10px; }
-      .top-left .bold { font-weight: bold; font-size: 11px; }
-      .top-center { text-align: center; font-size: 13px; font-weight: bold; }
-      .top-right { text-align: right; font-size: 11px; }
-      .top-right .title-right { font-weight: bold; font-size: 13px; margin-bottom: 2px; }
-      .top-right table { margin-left: auto; }
-      .top-right table td { border: none; padding: 1px 4px; font-size: 11px; text-align: left; }
+      .top-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; position: relative; }
+      .top-left { font-size: 12px; }
+      .top-left .bold { font-weight: bold; font-size: 13px; }
+      .top-center { position: absolute; left: 50%; transform: translateX(-50%); text-align: center; font-size: 15px; font-weight: bold; top: 0; white-space: nowrap; }
+      .top-right { font-size: 13px; display: flex; flex-direction: column; align-items: flex-start; }
+      .top-right .title-right { font-weight: bold; font-size: 15px; margin-bottom: 2px; padding-left: 4px; }
+      .top-right table { margin: 0; }
+      .top-right table td { border: none; padding: 1px 4px; font-size: 13px; text-align: left; white-space: nowrap; }
       .top-right table td:first-child { font-weight: bold; }
 
       /* --- Exporter block --- */
-      .exporter { margin: 6px 0; font-size: 11px; }
-      .exporter table td { border: none; padding: 1px 4px; vertical-align: top; font-size: 11px; }
+      .exporter { margin-top: 15px; margin-bottom: 6px; font-size: 13px; }
+      .exporter table td { border: none; padding: 1px 4px; vertical-align: top; font-size: 13px; white-space: nowrap; }
       .exporter-name { font-weight: bold; }
 
       /* --- Station + Aircraft header --- */
-      .station-line { font-weight: bold; font-size: 11px; margin: 6px 0 4px 0; }
+      .station-line { font-weight: bold; font-size: 13px; margin: 6px 0 4px 0; }
       .aircraft-header { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-      .aircraft-header td { border: 1px solid #000; padding: 3px 5px; font-size: 10px; font-weight: bold; }
+      .aircraft-header td { border: 1px solid #000; padding: 3px 5px; font-size: 12px; font-weight: bold; }
 
       /* --- Particulars note --- */
-      .particulars-note { text-align: center; font-size: 9px; font-style: italic; border-left: 1px solid #000; border-right: 1px solid #000; padding: 2px; }
+      .particulars-note { text-align: center; font-size: 11px; font-style: italic; font-weight: bold; border-left: 1px solid #000; border-right: 1px solid #000; padding: 2px; }
 
       /* --- Items table --- */
       .items-table { width: 100%; border-collapse: collapse; }
       .items-table th {
-        border: 1px solid #000; padding: 3px 4px; font-size: 8px; font-weight: bold;
+        border: 1px solid #000; padding: 3px 4px; font-size: 10px; font-weight: bold;
         text-align: center; background: none; vertical-align: bottom;
       }
-      .items-table td { border: 1px solid #000; padding: 2px 4px; font-size: 9px; height: 18px; }
+      .items-table td { border: 1px solid #000; padding: 2px 4px; font-size: 11px; height: 18px; }
       .items-table .c { text-align: center; }
       .items-table .r { text-align: right; }
       .total-row td { font-weight: bold; }
 
       /* --- Footer --- */
-      .entered-section { display: flex; justify-content: space-between; margin-top: 8px; font-size: 10px; }
+      .entered-section { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; }
       .entered-left { }
-      .entered-right { text-align: right; font-size: 9px; }
+      .entered-right { text-align: right; font-size: 11px; }
 
       /* --- Declarations --- */
-      .declarations { margin-top: 10px; font-size: 9.5px; }
+      .declarations { margin-top: 10px; font-size: 11.5px; }
       .decl-block { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 12px; }
       .decl-left, .decl-right { flex: 1; }
       .decl-right { text-align: left; }
       .officer-name { font-weight: bold; text-transform: uppercase; }
-      .officer-title { font-size: 9px; }
+      .officer-title { font-size: 11px; }
 
       /* --- Bottom signatures --- */
-      .bottom-sigs { display: flex; justify-content: space-between; gap: 20px; margin-top: 15px; font-size: 9px; }
+      .bottom-sigs { display: flex; justify-content: space-between; gap: 20px; margin-top: 15px; font-size: 11px; }
       .sig-col { flex: 1; }
       .sig-col .sig-line { border-top: none; padding-top: 25px; }
 
       @media print {
-        body { padding: 8mm; }
-        @page { size: legal portrait; margin: 8mm; }
+        body { margin: 0; padding: 40px 8mm 8mm 8mm; }
+        @page { size: legal portrait; margin: 0; }
       }
     </style></head><body>
 
@@ -3639,31 +3648,33 @@ async function printShippingBill(id) {
       <div class="top-left">
         <div class="bold">FOR EXPORT FROM BOND</div>
         <div>Shipping Bill for Foreign Goods Re-exported</div>
+        
+        <!-- ===== EXPORTER ===== -->
+        <div class="exporter">
+          <table>
+            <tr>
+              <td style="width: 120px;"><b>Exporters Name</b></td>
+              <td style="width: 15px;"><b>:</b></td>
+              <td class="exporter-name">CASINO AIR CATERERS & FLIGHT SERVICES</td>
+            </tr>
+            <tr>
+              <td><b>ADDRESS</b></td>
+              <td><b>:</b></td>
+              <td>(Unit of Anjali Hotels Pvt.Ltd)</td>
+            </tr>
+          </table>
+        </div>
       </div>
       <div class="top-center">FOR AIRCRAFT USE</div>
       <div class="top-right">
         <div class="title-right">DUTY FREE GOODS</div>
         <table>
-          <tr><td>FLT. NO.</td><td>: ${bill.flight_no || ''}</td></tr>
-          <tr><td>DATE</td><td>: ${fmtDate(bill.sb_date)}</td></tr>
-          <tr><td>ETD</td><td>: ${bill.etd || ''}</td></tr>
-          <tr><td>VT</td><td>: ${bill.vt || ''}</td></tr>
+          <tr><td style="width: 75px;">FLT. NO.</td><td style="width: 10px;">:</td><td><span style="font-weight:bold; font-size:16px;">${bill.flight_no || ''}</span></td></tr>
+          <tr><td>DATE</td><td>:</td><td>${fmtDate(bill.sb_date)}</td></tr>
+          <tr><td>ETD</td><td>:</td><td>${bill.etd || ''}</td></tr>
+          <tr><td>VT</td><td>:</td><td>${bill.vt || ''}</td></tr>
         </table>
       </div>
-    </div>
-
-    <!-- ===== EXPORTER ===== -->
-    <div class="exporter">
-      <table>
-        <tr>
-          <td><b>Exporters Name :</b></td>
-          <td class="exporter-name">CASINO AIR CATERERS & FLIGHT SERVICES</td>
-        </tr>
-        <tr>
-          <td><b>ADDRESS :</b></td>
-          <td>(Unit of Anjali Hotels Pvt.Ltd)</td>
-        </tr>
-      </table>
     </div>
 
     <!-- ===== STATION ===== -->
@@ -3672,11 +3683,18 @@ async function printShippingBill(id) {
     <!-- ===== AIRCRAFT / ROUTE HEADER ===== -->
     <table class="aircraft-header">
       <tr>
-        <td style="width:18%">Name Of Aircraft<br><span style="font-weight:normal">${bill.flight_no || ''}</span></td>
-        <td style="width:18%">Master/Agents</td>
-        <td style="width:12%">Colours</td>
-        <td style="width:22%">Port Of Discharge<br><span style="font-weight:normal">${bill.port_of_discharge || 'COK/KWI/COK'}</span></td>
-        <td style="width:30%">Country of Final Destination<br><span style="font-weight:normal">${bill.country_of_destination || 'KWI'}</span></td>
+        <td style="width:22%; text-align:center; font-weight:normal;">Name Of Aircraft</td>
+        <td style="width:18%; text-align:center; font-weight:normal;">Master/Agents</td>
+        <td style="width:12%; text-align:center; font-weight:normal;">Colours</td>
+        <td style="width:24%; text-align:center; font-weight:normal;">Port Of Discharge</td>
+        <td style="width:24%; text-align:center; font-weight:normal;">Country of Final Destination</td>
+      </tr>
+      <tr>
+        <td style="text-align:center; font-weight:bold; font-size:15px; height: 26px;">${bill.flight_no || ''}</td>
+        <td style="text-align:center;"></td>
+        <td style="text-align:center;"></td>
+        <td style="text-align:center; font-weight:normal; font-size:14px;">${(bill.port_of_discharge || 'COK/KWI/COK').replace(/-/g, '/')}</td>
+        <td style="text-align:center; font-weight:normal; font-size:14px;">${bill.country_of_destination || 'KWI'}</td>
       </tr>
     </table>
 
@@ -3690,7 +3708,7 @@ async function printShippingBill(id) {
           <th style="width:4%">S.No.</th>
           <th style="width:12%">Bond No.</th>
           <th style="width:10%">Expiry date</th>
-          <th style="width:30%">Detailed Description of Goods&ensp;Distinguishing<br>Size, brand etc.</th>
+          <th style="width:30%">Detailed Description of Goods&ensp;Distinguishing<br>Size,Type,Brand etc.</th>
           <th style="width:6%">QTY.</th>
           <th style="width:10%">Unit<br>Value</th>
           <th style="width:10%">Value<br>Amount</th>
@@ -3718,15 +3736,15 @@ async function printShippingBill(id) {
     <div class="declarations">
       <div class="decl-block">
         <div class="decl-left">
-          <p>Particulars declared in this shipping bill are checked and found
+          <p style="font-weight: bold;">Particulars declared in this shipping bill are checked and found
           Correct</p>
-          <div style="margin-top: 30px;">
+          <div style="margin-top: 80px;">
            
             <div class="officer-title">Inspector of Customs</div>
           </div>
         </div>
         <div class="decl-right">
-          <div style="margin-top: 40px;">
+          <div style="margin-top: 90px;">
            
             <div class="officer-title">For ASSISTANT COMMISSIONER OF CUSTOMS</div>
           </div>
@@ -3757,7 +3775,7 @@ async function printShippingBill(id) {
       </div>
 
       <!-- Contents received on board -->
-      <div style="margin-left: 25%; text-align: center; margin-top: 40px; font-size: 9px;">
+      <div style="margin-left: 25%; text-align: center; margin-top: 40px; font-size: 11px;">
         <div>Contents Received on Board</div>
         <div><b>Aircraft Commander</b></div>
       </div>
@@ -6126,6 +6144,7 @@ function initNavigation() {
                 <a href="items.html" class="nav-item ${window.location.pathname.endsWith('items.html') ? 'active' : ''}"><i class="fas fa-wine-bottle"></i> <span>Product Master</span></a>
                 <a href="consignments.html" class="nav-item ${window.location.pathname.endsWith('consignments.html') ? 'active' : ''}"><i class="fas fa-building"></i> <span>Airline/Agent Master</span></a>
                 <a href="airline-masters.html" class="nav-item ${window.location.pathname.endsWith('airline-masters.html') ? 'active' : ''}"><i class="fas fa-plane"></i> <span>Flight Masters</span></a>
+                <a href="country-masters.html" class="nav-item ${window.location.pathname.endsWith('country-masters.html') ? 'active' : ''}"><i class="fas fa-globe"></i> <span>Country Masters</span></a>
                 
                 <div class="nav-label">Administration</div>
                 <a href="users.html" class="nav-item ${window.location.pathname.endsWith('users.html') ? 'active' : ''}"><i class="fas fa-users-cog"></i> <span>User Management</span></a>
@@ -6152,6 +6171,7 @@ function initNavigation() {
                 <div class="nav-label">Master Data</div>
                 <a href="items.html" class="nav-item ${window.location.pathname.endsWith('items.html') ? 'active' : ''}"><i class="fas fa-wine-bottle"></i> <span>Items / Products</span></a>
                 <a href="consignments.html" class="nav-item ${window.location.pathname.endsWith('consignments.html') ? 'active' : ''}"><i class="fas fa-building"></i> <span>Consignments</span></a>
+                <a href="country-masters.html" class="nav-item ${window.location.pathname.endsWith('country-masters.html') ? 'active' : ''}"><i class="fas fa-globe"></i> <span>Countries</span></a>
               `}
             </nav>
             <div class="sidebar-footer" style="padding: 15px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: auto;">
