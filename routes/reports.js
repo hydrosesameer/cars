@@ -4,7 +4,7 @@ const router = express.Router();
 // Form-A: Item-wise ledger report
 router.get('/form-a', async (req, res) => {
     const db = req.app.locals.db;
-    const { item_id, bond_no, from_date, to_date, branch_id } = req.query;
+    const { item_id, bond_no, from_date, to_date, branch_id, consignment_id } = req.query;
     
     try {
         let query = `
@@ -53,8 +53,12 @@ router.get('/form-a', async (req, res) => {
             params.push(to_date);
         }
         if (branch_id) {
-            query += ' AND branch_id = ?';
+            query += ' AND ie.branch_id = ?';
             params.push(branch_id);
+        }
+        if (consignment_id) {
+            query += ' AND ie.consignment_id = ?';
+            params.push(consignment_id);
         }
         
         query += ' ORDER BY ie.date_of_receipt, ie.id';

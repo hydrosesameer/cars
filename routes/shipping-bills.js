@@ -108,6 +108,14 @@ router.post('/', async (req, res) => {
             }
         }
 
+        let finalBranchId = branch_id;
+        if (!finalBranchId && items.length > 0) {
+            const [inwardRows] = await connection.query('SELECT branch_id FROM inward_entries WHERE id = ?', [items[0].inward_id]);
+            if (inwardRows.length > 0) {
+                finalBranchId = inwardRows[0].branch_id;
+            }
+        }
+
         const [result] = await connection.query(`
             INSERT INTO shipping_bills (
                 sb_no, sb_date, consignment_id, flight_no,
@@ -123,7 +131,7 @@ router.post('/', async (req, res) => {
             exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
             exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
             entered_no || null,
-            remarks || null, branch_id
+            remarks || null, finalBranchId
         ]);
 
         const billId = result.insertId;

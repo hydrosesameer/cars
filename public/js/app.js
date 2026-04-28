@@ -2000,6 +2000,14 @@ async function loadFormAPage() {
     const bondOptions = [{ value: "", text: "Search Bond No" }, ...[...new Set(inwardEntries.map(e => e.bond_no).filter(b => b))].sort().map(b => ({ value: b, text: b }))];
     bondSelect.innerHTML = bondOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join("");
 
+    const airlineSelect = document.getElementById("forma-airline");
+    if (airlineSelect) {
+      const consignments = await apiCall("/consignments");
+      if (airlineSelect.tomselect) airlineSelect.tomselect.destroy();
+      const airlineOptions = [{ value: "", text: "All Airlines" }, ...consignments.map(c => ({ value: String(c.id), text: c.name }))];
+      airlineSelect.innerHTML = airlineOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join("");
+    }
+
     // Now initialize TomSelect
     initSearchableSelects();
 
@@ -2079,10 +2087,13 @@ async function generateFormA() {
   const fromDate = document.getElementById("forma-from").value;
   const toDate = document.getElementById("forma-to").value;
 
+  const airlineId = document.getElementById("forma-airline") ? document.getElementById("forma-airline").value : "";
+
   if (itemId) params.append("item_id", itemId);
   if (bondNo) params.append("bond_no", bondNo);
   if (fromDate) params.append("from_date", fromDate);
   if (toDate) params.append("to_date", toDate);
+  if (airlineId) params.append("consignment_id", airlineId);
   const user = getAuthUser();
   if (user.role !== 'SUPER_ADMIN' && user.branch_id) params.append("branch_id", user.branch_id);
 
@@ -2101,7 +2112,13 @@ async function generateFormA() {
 
     const itemSearch = document.getElementById("forma-item");
     const itemText = itemSearch && itemSearch.selectedIndex > 0 ? itemSearch.options[itemSearch.selectedIndex].text : '';
-    const reportTitle = itemText ? `Form A / Bond Ledger - ${itemText}` : 'Form A';
+    const airlineSearch = document.getElementById("forma-airline");
+    const airlineText = airlineSearch && airlineSearch.selectedIndex > 0 ? airlineSearch.options[airlineSearch.selectedIndex].text : '';
+    
+    let titleParts = [];
+    if (itemText) titleParts.push(itemText);
+    if (airlineText) titleParts.push(airlineText);
+    const reportTitle = titleParts.length > 0 ? `Form A / Bond Ledger - ${titleParts.join(' - ')}` : 'Form A';
 
     reportContainer.innerHTML = `
             <style>
@@ -6235,10 +6252,23 @@ async function renderSuperAdminTools() {
 }
 
 async function autoLogin(userId) {
-    const res = await fetch('/api/auth/auto-login', { method: 'POST', body: JSON.stringify({ userId }) });
-    const data = await res.json();
-    localStorage.setItem('cafs_auth', JSON.stringify({ token: data.token, user: data.user, timestamp: Date.now() }));
-    window.location.href = 'index.html';
+    try {
+        const res = await fetch('/api/auth/auto-login', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId }) 
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            showToast(err.error || "Failed to auto-login", "error");
+            return;
+        }
+        const data = await res.json();
+        localStorage.setItem('cafs_auth', JSON.stringify({ token: data.token, user: data.user, timestamp: Date.now() }));
+        window.location.href = 'index.html';
+    } catch (error) {
+        showToast("Auto-login error", "error");
+    }
 }
 
 let cachedReorderItems = [];
