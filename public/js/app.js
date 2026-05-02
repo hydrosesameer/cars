@@ -2355,7 +2355,7 @@ async function generateFormB() {
     let tableRows = "";
     let totalFormBRows = 0;
     for (const [consignment, entries] of Object.entries(data.grouped_entries)) {
-      tableRows += `<tr><td colspan="13" style="text-align: center; font-weight: bold;">${consignment}</td></tr>`;
+      tableRows += `<tr><td colspan="12" style="text-align: center; font-weight: bold;">${consignment}</td></tr>`;
       totalFormBRows += 1;
       entries.forEach((e) => {
         totalFormBRows += 1;
@@ -2364,7 +2364,7 @@ async function generateFormB() {
           <td>${e.be_no || "Multiple"}/${formatDate(e.be_date)}</td>
           <td>${e.bond_no || "Multiple"}</td>
           <td>${formatDate(e.date_of_order_section_60)}</td>
-          <td>${e.sl_no_import_invoice || "Multiple"}</td>
+          <td>${(e.sl_no_import_invoice && e.sl_no_import_invoice !== 'Multiple') ? e.sl_no_import_invoice : ""}</td>
           <td>${e.description || "Consolidated Stocks"}</td>
           <td>${e.qty_in_stock}</td>
           <td>${e.total_value ? Number(e.total_value).toFixed(2) : "0.00"}</td>
@@ -2372,15 +2372,14 @@ async function generateFormB() {
           <td>${formatDate(e.extended_bonding_expiry1)}</td>
           <td>${formatDate(e.extended_bonding_expiry2)}</td>
           <td>${formatDate(e.extended_bonding_expiry3)}</td>
-          <td>${valRate}</td>
-          <td>${e.remarks || ""}</td>
+          <td></td>
         </tr>`;
       });
     }
 
     const formBEmptyRows = Math.max(0, 15 - totalFormBRows);
     // Add blank rows for downspace writing on the page
-    tableRows += Array(formBEmptyRows).fill('<tr>' + Array(13).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('');
+    tableRows += Array(formBEmptyRows).fill('<tr>' + Array(12).fill('<td style="height:30px;"></td>').join('') + '</tr>').join('');
 
     document.getElementById("formb-report-container").innerHTML = `
             <style>
@@ -2445,7 +2444,7 @@ async function generateFormB() {
                 <table class="form-b-table">
                     <thead>
                         <tr style="font-weight: bold;">
-                            <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>14</th>
+                            <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th>
                         </tr>
                         <tr style="font-weight: bold;">
                             <th style="min-width: 80px;">B.E No. Date</th>
@@ -2460,16 +2459,15 @@ async function generateFormB() {
                             <th style="min-width: 70px;">Date of Exp. of<br>extended<br>Bonding period</th>
                             <th style="min-width: 70px;">Date of Exp. of<br>extended Bonding<br>period</th>
                             <th>Remarks</th>
-                            <th>Remarks</th>
                         </tr>
                     </thead>
-                    <tbody>${tableRows || '<tr><td colspan="13" style="text-align:center; padding: 20px;">No items expiring</td></tr>'}</tbody>
+                    <tbody>${tableRows || '<tr><td colspan="12" style="text-align:center; padding: 20px;">No items expiring</td></tr>'}</tbody>
                     <tfoot style="font-weight: bold; background-color: #f8f9fa;">
                         <tr style="text-align: center;">
                             <td colspan="5">GRAND TOTAL</td>
                             <td>${Object.values(data.grouped_entries).flat().reduce((sum, e) => sum + Number(e.qty_in_stock || 0), 0)}</td>
                             <td>${Object.values(data.grouped_entries).flat().reduce((sum, e) => sum + Number(e.total_value || 0), 0).toFixed(2)}</td>
-                            <td colspan="6"></td>
+                            <td colspan="5"></td>
                         </tr>
                     </tfoot>
                 </table>
