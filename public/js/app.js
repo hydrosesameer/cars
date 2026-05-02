@@ -4483,19 +4483,20 @@ function updateOutwardTransportMode(mode) {
   const airlineSelection = document.getElementById("airline-selection");
   const shipSelection = document.getElementById("ship-selection");
   
-  if (airlineSelection) airlineSelection.style.display = (mode === 'AIRLINE') ? "block" : "none";
+  // Show Airline selection for all modes (as items are always linked to a consignment/airline)
+  if (airlineSelection) airlineSelection.style.display = "block";
+  
+  // Show Ship selection only for SHIP mode
   if (shipSelection) shipSelection.style.display = (mode === 'SHIP') ? "block" : "none";
   
-  // Clear other selection when switching mode to avoid confusion
-  if (mode === 'SHIP') {
-    const consSelect = document.getElementById("out-consignment");
-    if (consSelect && consSelect.tomselect) consSelect.tomselect.setValue("");
-  } else if (mode === 'AIRLINE') {
-    const shipSelect = document.getElementById("out-ship");
-    if (shipSelect && shipSelect.tomselect) shipSelect.tomselect.setValue("");
-  } else if (mode === 'ROAD') {
-      // For Road, we usually fetch all or filter by a previous selection
-      // If they just switched to road, maybe they want to see all available
+  // Logic for Road mode
+  if (mode === 'ROAD') {
+      const regInput = document.getElementById("out-transport-reg");
+      if (regInput) {
+          regInput.focus();
+          regInput.style.borderColor = "var(--primary)";
+          setTimeout(() => regInput.style.borderColor = "", 2000);
+      }
       fetchAvailableForConsignmentPage('ALL');
   }
 }
