@@ -71,11 +71,35 @@
                       <input type="text" class="form-control" id="out-transport-reg" />
                     </div>
                   </div>
-                  <div class="form-grid-3">
-                    <div class="form-group">
+                  <div class="form-group" style="margin-top: 1rem">
+                    <label class="form-label">Transport Mode *</label>
+                    <div class="segmented-control" style="margin-top: 0.5rem">
+                      <label>
+                        <input type="radio" name="transport-mode" value="AIRLINE" checked onchange="updateOutwardTransportMode('AIRLINE')" />
+                        <span>Airline</span>
+                      </label>
+                      <label>
+                        <input type="radio" name="transport-mode" value="SHIP" onchange="updateOutwardTransportMode('SHIP')" />
+                        <span>Ship</span>
+                      </label>
+                      <label>
+                        <input type="radio" name="transport-mode" value="ROAD" onchange="updateOutwardTransportMode('ROAD')" />
+                        <span>Road</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="form-grid-3" style="margin-top: 1rem">
+                    <div class="form-group" id="airline-selection">
                       <label class="form-label">Consignment / Airline</label>
                       <select class="form-control searchable" id="out-consignment" onchange="fetchAvailableForConsignmentPage(this.value)">
                         <option value="">Select Airline</option>
+                      </select>
+                    </div>
+                    <div class="form-group" id="ship-selection" style="display: none">
+                      <label class="form-label">Ship / Consignment</label>
+                      <select class="form-control searchable" id="out-ship" onchange="fetchAvailableForConsignmentPage(this.value)">
+                        <option value="">Select Ship</option>
                       </select>
                     </div>
                     <div class="form-group">

@@ -171,9 +171,9 @@ router.post('/', async (req, res) => {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, 
-                item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, 
-                item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null,
-                item.extended_bonding_expiry1 || null, item.extended_bonding_expiry2 || null, item.extended_bonding_expiry3 || null
+                toSqlDate(item.shelf_life_date), item.duty_percent || null, item.bond_no || null, 
+                toSqlDate(item.bond_date), toSqlDate(item.bond_expiry),
+                toSqlDate(item.extended_bonding_expiry1), toSqlDate(item.extended_bonding_expiry2), toSqlDate(item.extended_bonding_expiry3)
             ]);
         }
 
@@ -246,9 +246,9 @@ router.put('/:id', async (req, res) => {
                     WHERE id = ?
                 `, [
                     item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, 
-                    item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, 
-                    item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null,
-                    item.extended_bonding_expiry1 || null, item.extended_bonding_expiry2 || null, item.extended_bonding_expiry3 || null,
+                    toSqlDate(item.shelf_life_date), item.duty_percent || null, item.bond_no || null, 
+                    toSqlDate(item.bond_date), toSqlDate(item.bond_expiry),
+                    toSqlDate(item.extended_bonding_expiry1), toSqlDate(item.extended_bonding_expiry2), toSqlDate(item.extended_bonding_expiry3),
                     item.id
                 ]);
                 processedIds.add(itemId);
@@ -262,9 +262,9 @@ router.put('/:id', async (req, res) => {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
                     inwardId, item.item_id || null, item.description, item.qty, item.unit || 'PCS', item.value, item.duty, item.hsn_code || null, 
-                    item.shelf_life_date ? String(item.shelf_life_date).split('T')[0] : null, item.duty_percent || null, item.bond_no || null, 
-                    item.bond_date ? String(item.bond_date).split('T')[0] : null, item.bond_expiry ? String(item.bond_expiry).split('T')[0] : null,
-                    item.extended_bonding_expiry1 || null, item.extended_bonding_expiry2 || null, item.extended_bonding_expiry3 || null
+                    toSqlDate(item.shelf_life_date), item.duty_percent || null, item.bond_no || null, 
+                    toSqlDate(item.bond_date), toSqlDate(item.bond_expiry),
+                    toSqlDate(item.extended_bonding_expiry1), toSqlDate(item.extended_bonding_expiry2), toSqlDate(item.extended_bonding_expiry3)
                 ]);
             }
         }

@@ -1593,16 +1593,15 @@ function removeOutwardItem(idx) {
   renderOutwardItems();
 }
 
-async function saveOutwardPage() {
+async function saveOutward() {
     const data = {
       dispatch_date: document.getElementById("out-date").value,
       flight_no: document.getElementById("out-flight").value,
-      nature_of_removal: document.getElementById("out-removal-nature").value,
-      to_warehouse: document.getElementById("out-to-warehouse").value,
       shipping_bill_no: document.getElementById("out-sb-no").value,
       shipping_bill_date: document.getElementById("out-sb-date").value,
       registration_no_of_means_of_transport: document.getElementById("out-transport-reg").value,
       consignment_id: document.getElementById("out-consignment").value || null,
+      purpose: document.getElementById("out-purpose").value,
       remarks: document.getElementById("out-remarks").value,
       items: outwardItemsTemp,
       branch_id: getAuthUser().branch_id
@@ -1632,7 +1631,8 @@ async function saveOutwardPage() {
     try {
       await apiCall("/outward", "POST", data);
       showToast("Dispatch created with " + data.items.length + " items");
-      navigateTo('outward');
+      closeModal();
+      loadOutwardEntries();
     } catch (error) {
       console.error("Save outward error:", error);
     }
@@ -4481,6 +4481,27 @@ function updateTransportMode(mode) {
   if (radio) radio.checked = true;
 }
 
+function updateOutwardTransportMode(mode) {
+  const airlineSelection = document.getElementById("airline-selection");
+  const shipSelection = document.getElementById("ship-selection");
+  
+  if (airlineSelection) airlineSelection.style.display = (mode === 'AIRLINE') ? "block" : "none";
+  if (shipSelection) shipSelection.style.display = (mode === 'SHIP') ? "block" : "none";
+  
+  // Clear other selection when switching mode to avoid confusion
+  if (mode === 'SHIP') {
+    const consSelect = document.getElementById("out-consignment");
+    if (consSelect && consSelect.tomselect) consSelect.tomselect.setValue("");
+  } else if (mode === 'AIRLINE') {
+    const shipSelect = document.getElementById("out-ship");
+    if (shipSelect && shipSelect.tomselect) shipSelect.tomselect.setValue("");
+  } else if (mode === 'ROAD') {
+      // For Road, we usually fetch all or filter by a previous selection
+      // If they just switched to road, maybe they want to see all available
+      fetchAvailableForConsignmentPage('ALL');
+  }
+}
+
 
 // Update airline name when code is selected
 function updateAirlineName() {
@@ -4658,10 +4679,25 @@ async function initOutwardEntry() {
   // Populate Airline Dropdown
   const consSelect = document.getElementById("out-consignment");
   if (consSelect) {
+    if (consSelect.tomselect) consSelect.tomselect.destroy();
+    consSelect.classList.remove('searchable');
     consSelect.innerHTML =
       '<option value="">Select Airline</option>' +
       consignments
         .filter((c) => c.type === "AIRLINE")
+        .map((c) => `<option value="${c.id}">${c.name}</option>`)
+        .join("");
+  }
+
+  // Populate Ship Dropdown
+  const shipSelect = document.getElementById("out-ship");
+  if (shipSelect) {
+    if (shipSelect.tomselect) shipSelect.tomselect.destroy();
+    shipSelect.classList.remove('searchable');
+    shipSelect.innerHTML =
+      '<option value="">Select Ship</option>' +
+      consignments
+        .filter((c) => c.type === "SHIP")
         .map((c) => `<option value="${c.id}">${c.name}</option>`)
         .join("");
   }
@@ -4721,6 +4757,12 @@ async function initOutwardEntry() {
 
   // Trigger toggle logic
   if (window.toggleTransferFields) window.toggleTransferFields();
+  
+  // Initialize searchable selects
+  if (consSelect) consSelect.classList.add('searchable');
+  if (shipSelect) shipSelect.classList.add('searchable');
+  initSearchableSelects();
+
   initDatepickers();
   setupFormKeyboardNav('outward-dispatch-form');
 }
@@ -5149,7 +5191,16 @@ async function saveOutwardPage() {
   const natureSelect = document.getElementById("out-removal-nature");
   const nature = natureSelect ? natureSelect.value : 'Re-export';
   
-  const airlineSelect = document.getElementById("out-consignment");
+  const transportModeEl = document.querySelector('input[name="transport-mode"]:checked');
+  const transportMode = transportModeEl ? transportModeEl.value : 'AIRLINE';
+
+  let airlineSelect;
+  if (transportMode === 'SHIP') {
+    airlineSelect = document.getElementById("out-ship");
+  } else {
+    airlineSelect = document.getElementById("out-consignment");
+  }
+
   const consignment_id = (airlineSelect && airlineSelect.tomselect) 
     ? airlineSelect.tomselect.getValue() 
     : (airlineSelect ? airlineSelect.value : null);
