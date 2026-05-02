@@ -7,6 +7,18 @@ router.get('/form-a', async (req, res) => {
     const { item_id, bond_no, from_date, to_date, branch_id, consignment_id } = req.query;
     
     try {
+        // Dynamic warehouse info
+        let warehouse_code = 'Cok15003';
+        let warehouse_name = 'M/s. Casino Air Caterers & Flight Services (Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572';
+        
+        if (branch_id) {
+            const [branches] = await db.query("SELECT * FROM branches WHERE id = ?", [branch_id]);
+            if (branches.length > 0) {
+                warehouse_code = branches[0].code || warehouse_code;
+                warehouse_name = branches[0].name ? `${branches[0].name} Warehouse` : warehouse_name;
+            }
+        }
+
         let query = `
             SELECT ii.id as inward_item_id, ii.description, ii.qty as qty_received, ii.value, ii.duty, ii.unit, ie.pkg_marks,
                    ie.pkg_description, ie.transport_reg_no, ie.otl_no, ie.qty_advised, ie.breakage_shortage,
@@ -115,8 +127,8 @@ router.get('/form-a', async (req, res) => {
         res.json({
             report_type: 'FORM-A',
             report_title: 'Form to be maintained by the warehouse licensee of the goods handling, storing and removal of the warehoused goods',
-            warehouse_code: 'Cok15003',
-            warehouse_name: 'M/s. Casino Air Caterers & Flight Services (Unit Of Anjali Hotels) Nayathode P.O Angamali Kerala 683572',
+            warehouse_code,
+            warehouse_name,
             generated_at: new Date().toISOString(),
             entries: result
         });
@@ -687,12 +699,14 @@ router.get('/shipping-bill', async (req, res) => {
         let query = `
             SELECT oi.*, oe.dispatch_date, oe.flight_no, oe.shipping_bill_no, oe.shipping_bill_date,
                    COALESCE(ii.bond_no, ie.bond_no) as bond_no, ie.be_no, 
-                   c.name as consignment_name, c.code as consignment_code
+                   c.name as consignment_name, c.code as consignment_code,
+                   b.name as branch_name, b.address as branch_address
             FROM outward_items oi
             JOIN outward_entries oe ON oi.outward_id = oe.id
             JOIN inward_items ii ON oi.inward_item_id = ii.id
             JOIN inward_entries ie ON ii.inward_id = ie.id
             LEFT JOIN consignments c ON oe.consignment_id = c.id
+            LEFT JOIN branches b ON oe.branch_id = b.id
             WHERE 1=1
         `;
         let params = [];
@@ -759,8 +773,8 @@ router.get('/shipping-bill', async (req, res) => {
                 ge_no: consignment.shipping_bill_no
             },
             company: {
-                name: 'CASINO AIR CATERERS & FLIGHT SERVICES',
-                address: '(Unit of Anjali Hotels) Kerala'
+                name: consignment.branch_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
+                address: consignment.branch_address || '(Unit of Anjali Hotels) Kerala'
             },
             items,
             totals: {
