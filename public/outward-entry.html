@@ -57,7 +57,7 @@
                       <textarea class="form-control" id="out-to-warehouse" placeholder="e.g. AIR INDIA LTD, CABIN BOND STORES, IGI AIR PORT COMPLEX, NEW DELHI-110037 (W.H.NO.DEL4S016)"></textarea>
                     </div>
                   </div>
-                  <div class="form-grid-3" id="shipping-bill-group">
+                  <div class="form-grid-2" id="shipping-bill-group">
                     <div class="form-group">
                       <label class="form-label">Shipping Bill No</label>
                       <input type="text" class="form-control" id="out-sb-no" />
@@ -65,10 +65,6 @@
                     <div class="form-group">
                       <label class="form-label">Shipping Bill Date</label>
                       <input type="text" data-datepicker="true" class="form-control" id="out-sb-date" />
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Vehicle No / Transport Reg</label>
-                      <input type="text" class="form-control" id="out-transport-reg" />
                     </div>
                   </div>
                   <div class="form-group" style="margin-top: 1rem">
@@ -86,6 +82,13 @@
                         <input type="radio" name="transport-mode" value="ROAD" onchange="updateOutwardTransportMode('ROAD')" />
                         <span>Road</span>
                       </label>
+                    </div>
+                  </div>
+
+                  <div class="form-grid-3" style="margin-top: 1rem" id="transport-reg-row">
+                    <div class="form-group">
+                      <label class="form-label">Transportation Number (Vehicle No)</label>
+                      <input type="text" class="form-control" id="out-transport-reg" />
                     </div>
                   </div>
 
