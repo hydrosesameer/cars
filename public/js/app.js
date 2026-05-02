@@ -3670,12 +3670,12 @@ async function printShippingBill(id) {
             <tr>
               <td style="width: 120px;"><b>Exporters Name</b></td>
               <td style="width: 15px;"><b>:</b></td>
-              <td class="exporter-name">CASINO AIR CATERERS & FLIGHT SERVICES</td>
+              <td class="exporter-name">${bill.branch_name || 'CASINO AIR CATERERS & FLIGHT SERVICES'}</td>
             </tr>
             <tr>
               <td><b>ADDRESS</b></td>
               <td><b>:</b></td>
-              <td>(Unit of Anjali Hotels Pvt.Ltd)</td>
+              <td>(Unit of Anjali Hotels Pvt.Ltd) ${bill.branch_address || ''}</td>
             </tr>
           </table>
         </div>
