@@ -116,6 +116,17 @@ router.post('/', async (req, res) => {
             }
         }
 
+        // Dynamic exporter info from branch
+        let branchName = 'CASINO AIR CATERERS & FLIGHT SERVICES';
+        let branchAddress = '(Unit of Anjali Hotels Pvt.Ltd)';
+        if (finalBranchId) {
+            const [branchRows] = await connection.query('SELECT name, address FROM branches WHERE id = ?', [finalBranchId]);
+            if (branchRows.length > 0) {
+                branchName = branchRows[0].name || branchName;
+                branchAddress = branchRows[0].address || branchAddress;
+            }
+        }
+
         const [result] = await connection.query(`
             INSERT INTO shipping_bills (
                 sb_no, sb_date, consignment_id, flight_no,
@@ -128,8 +139,8 @@ router.post('/', async (req, res) => {
             etd || null, vt || null,
             port_of_discharge || null, country_of_destination || null,
             station || null,
-            exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
-            exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
+            exporter_name || branchName,
+            exporter_address || branchAddress,
             entered_no || null,
             remarks || null, finalBranchId
         ]);
@@ -185,9 +196,21 @@ router.put('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     try {
-        const [bills] = await connection.query('SELECT status FROM shipping_bills WHERE id = ?', [req.params.id]);
+        const [bills] = await connection.query('SELECT status, branch_id FROM shipping_bills WHERE id = ?', [req.params.id]);
         if (bills.length === 0) throw new Error('Shipping bill not found');
         if (bills[0].status !== 'DRAFT') throw new Error('Only DRAFT shipping bills can be edited');
+
+        // Dynamic exporter info from branch
+        let branchName = 'CASINO AIR CATERERS & FLIGHT SERVICES';
+        let branchAddress = '(Unit of Anjali Hotels Pvt.Ltd)';
+        const branchId = bills[0].branch_id;
+        if (branchId) {
+            const [branchRows] = await connection.query('SELECT name, address FROM branches WHERE id = ?', [branchId]);
+            if (branchRows.length > 0) {
+                branchName = branchRows[0].name || branchName;
+                branchAddress = branchRows[0].address || branchAddress;
+            }
+        }
 
         await connection.query(`
             UPDATE shipping_bills SET
@@ -201,8 +224,8 @@ router.put('/:id', async (req, res) => {
             etd || null, vt || null,
             port_of_discharge || null, country_of_destination || null,
             station || null,
-            exporter_name || 'CASINO AIR CATERERS & FLIGHT SERVICES',
-            exporter_address || '(Unit of Anjali Hotels Pvt.Ltd)',
+            exporter_name || branchName,
+            exporter_address || branchAddress,
             entered_no || null,
             remarks || null, req.params.id
         ]);
