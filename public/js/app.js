@@ -4482,12 +4482,18 @@ function updateTransportMode(mode) {
 function updateOutwardTransportMode(mode) {
   const airlineSelection = document.getElementById("airline-selection");
   const shipSelection = document.getElementById("ship-selection");
+  const transportRegRow = document.getElementById("transport-reg-row");
   
   // Show Airline selection for all modes (as items are always linked to a consignment/airline)
   if (airlineSelection) airlineSelection.style.display = "block";
   
   // Show Ship selection only for SHIP mode
   if (shipSelection) shipSelection.style.display = (mode === 'SHIP') ? "block" : "none";
+
+  // Show Transportation Number row for ROAD or SHIP
+  if (transportRegRow) {
+      transportRegRow.style.display = (mode === 'ROAD' || mode === 'SHIP') ? "block" : "none";
+  }
   
   // Logic for Road mode
   if (mode === 'ROAD') {
